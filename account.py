@@ -23,57 +23,44 @@ _SLOTS = {
 }
 
 
-def _get(url, poesessid):
-    req = urllib.request.Request(url, headers={
-        "User-Agent": UA, "Accept": "application/json",
-        "Cookie": f"POESESSID={poesessid}"})
-    with urllib.request.urlopen(req, timeout=20) as r:
+def _get(url, poesessid=None):
+    headers = {"User-Agent": UA, "Accept": "application/json"}
+    if poesessid:
+        headers["Cookie"] = f"POESESSID={poesessid}"
+    with urllib.request.urlopen(
+            urllib.request.Request(url, headers=headers), timeout=20) as r:
         return json.loads(r.read().decode("utf-8"))
-
-
-def _friendly_error(e):
-    if isinstance(e, urllib.error.HTTPError):
-        if e.code in (401, 403):
-            return ("Login not accepted. Check your POESESSID in config.json "
-                    "(it expires — copy a fresh one).")
-        if e.code == 404:
-            return "Character or account not found."
-        return f"PoE returned HTTP {e.code}."
-    return f"Could not reach PoE: {e}"
-
-
-def get_characters(poesessid):
-    """Return (characters, error). characters: [{name, league, level, class}]."""
-    if not poesessid:
-        return [], ("No POESESSID set. Add your POESESSID cookie to "
-                    "config.json to connect your account.")
-    try:
-        data = _get("https://www.pathofexile.com/character-window/"
-                    "get-characters", poesessid)
-    except Exception as e:
-        return [], _friendly_error(e)
-    chars = [{"name": c.get("name", ""), "league": c.get("league", ""),
-              "level": c.get("level", 0), "class": c.get("class", "")}
-             for c in (data or []) if c.get("name")]
-    return chars, None
 
 
 def _strip(s):
     return re.sub(r"<<[^>]*>>", "", s or "").strip()  # localisation markup
 
 
-def get_gear(character, poesessid, account=None):
-    """Return (slots, error). Each slot is {slot,name,base,rarity,mods}."""
-    if not poesessid:
-        return [], "No POESESSID set (see config.json)."
-    url = ("https://www.pathofexile.com/character-window/get-items?character="
-           + urllib.parse.quote(character))
-    if account:
-        url += "&accountName=" + urllib.parse.quote(account)
+def get_gear(account, character, poesessid=None):
+    """Read a character's equipped items. Works with NO login if the PoE
+    profile is public; a POESESSID (config.json) is only needed for private
+    profiles. Returns (slots, error)."""
+    if not account or not character:
+        return [], "Type your account name and character name first."
+    url = ("https://www.pathofexile.com/character-window/get-items?accountName="
+           + urllib.parse.quote(account) + "&character="
+           + urllib.parse.quote(character) + "&realm=pc")
     try:
         data = _get(url, poesessid)
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return [], ("Couldn't read that profile. Either the account/"
+                        "character name is wrong, or your PoE profile is set to "
+                        "private. Set it to Public (see the steps), or add your "
+                        "POESESSID for private profiles.")
+        if e.code == 400:
+            return [], ("Check the character name — it must match exactly "
+                        "(capital letters count).")
+        if e.code == 404:
+            return [], "Account or character not found. Check the spelling."
+        return [], f"PoE returned HTTP {e.code}. Try again in a minute."
     except Exception as e:
-        return [], _friendly_error(e)
+        return [], f"Could not reach the PoE site: {e}"
     slots = []
     for it in (data.get("items") or []):
         inv = it.get("inventoryId", "")

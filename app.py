@@ -197,8 +197,6 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_keepalive()
         elif path == "/api/builds":
             self._json(200, {"builds": _read_builds()})
-        elif path == "/api/characters":
-            self._handle_characters()
         elif path == "/api/leagues":
             cfg = _load_config()
             leagues = trade.get_leagues()
@@ -262,24 +260,18 @@ class Handler(BaseHTTPRequestHandler):
         log.info("LOAD done in %.2fs total", time.time() - t0)
         self._json(200, build)
 
-    def _handle_characters(self):
-        chars, err = account.get_characters(
-            _load_config().get("poesessid", ""))
-        self._json(200, {"characters": chars, "error": err})
-
     def _handle_mygear(self, payload):
         cfg = _load_config()
+        acct = (payload.get("account") or cfg.get("accountName") or "").strip()
         character = (payload.get("character") or "").strip()
-        if not character:
-            return self._json(400, {"error": "No character selected."})
-        slots, err = account.get_gear(character, cfg.get("poesessid", ""),
-                                      cfg.get("accountName") or None)
+        slots, err = account.get_gear(acct, character,
+                                      cfg.get("poesessid") or None)
         if err:
             return self._json(200, {"slots": [], "error": err})
         idx = stats.get_index()
         for s in slots:
             s["mods"] = _enrich(idx, s["mods"])
-        log.info("MYGEAR %s -> %d slots", character, len(slots))
+        log.info("MYGEAR %s/%s -> %d slots", acct, character, len(slots))
         self._json(200, {"slots": slots, "error": None})
 
     def _handle_search(self, payload):

@@ -60,11 +60,16 @@ After loading, three tabs appear and stay collapsed until you pick one:
 - **📖 Guide** — the build author's own notes (leveling order, how to play),
   if the build has any.
 
-### My Gear (connect your account)
-Click **👤 My Gear** in the header to see your own character's equipped items
-and search upgrades for each. One-time setup: log in at pathofexile.com, copy
-your **POESESSID** cookie into `config.json`, and reload. It only talks to the
-official PoE site and your login never leaves your PC.
+### My Gear (see your own character, no login needed)
+Click **👤 My Gear** in the header to load your own character's equipped items
+and search an upgrade for each piece. The panel walks you through it with links:
+
+1. Set your PoE profile to **Public** (My Account → Privacy Settings) — one-time.
+2. Type your **account name** and **character name** → **Show my gear**.
+
+That's it — it reads your public profile from the official site, no cookie or
+login required. (If you'd rather keep your profile private, there's an
+**advanced** option to paste your POESESSID into `config.json` instead.)
 
 Clicking a tab opens it and hides the others; clicking the open one collapses it.
 

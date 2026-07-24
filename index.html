@@ -83,6 +83,13 @@
     padding:12px 16px;margin-bottom:14px;color:var(--text);line-height:1.6;
     position:relative;font-size:14px}
   .howtox{position:absolute;top:8px;right:8px;font-size:12px;padding:4px 10px}
+  .mghelp{background:#161c28;border:1px solid #2c3a52;border-radius:8px;
+    padding:12px 16px;margin:10px 0;color:var(--text);line-height:1.65;
+    font-size:14px}
+  .mghelp ol{margin:8px 0 2px;padding-left:20px}
+  .mghelp li{margin-bottom:7px}
+  .mghelp a{color:var(--blue)}
+  .mghelp a:hover{color:var(--gold2)}
   .notes{white-space:pre-wrap;word-break:break-word;font:13px/1.6 "Segoe UI",
     system-ui,sans-serif;color:var(--text);background:#0b0a08;border:1px solid
     var(--line);border-radius:6px;padding:14px;max-height:560px;overflow:auto}
@@ -355,37 +362,54 @@ function toggleMyGear(){
     showModeTabs(); renderMode();
   }
 }
-async function renderMyGear(){
+function renderMyGear(){
   const el=document.getElementById('myPanel');
-  el.innerHTML='<div class="panel"><span class="spin">Connecting to your account…</span></div>';
-  let d; try{ d=await api('/api/characters'); }catch(e){ d={error:'Could not connect.'}; }
-  if(!d || d.error){
-    el.innerHTML='<div class="panel"><div class="err">'+esc((d&&d.error)||'Could not connect.')+'</div>'+
-      '<div class="muted" style="margin-top:10px;line-height:1.7">'+
-      '<b>To connect your account (one-time):</b><br>'+
-      '1) Log in at pathofexile.com in your browser.<br>'+
-      '2) Copy the value of the <b>POESESSID</b> cookie for pathofexile.com.<br>'+
-      '3) Paste it into <b>config.json</b> next to <code>"poesessid"</code>, save, and reload.<br>'+
-      'Your login stays on your PC and is only sent to the official PoE site.</div></div>';
-    return;
-  }
-  const chars=d.characters||[];
-  if(!chars.length){ el.innerHTML='<div class="panel muted">No characters found on your account.</div>'; return; }
-  el.innerHTML='<div class="panel"><div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">'+
-    '<span class="muted">Your character:</span>'+
-    '<select id="charSel" class="optin">'+chars.map(c=>`<option value="${esc(c.name)}">${esc(c.name)} — Lv${c.level} ${esc(c.class)} (${esc(c.league)})</option>`).join('')+'</select>'+
-    '<button class="primary" onclick="loadMyGear()">Show my gear</button></div>'+
-    '<div id="myGearGrid" style="margin-top:14px"></div></div>';
+  let acc='', chr='';
+  try{ acc=localStorage.getItem('poe_account')||''; chr=localStorage.getItem('poe_char')||''; }catch(e){}
+  el.innerHTML=`<div class="panel">
+    <div style="font-size:18px;font-weight:700;color:var(--gold2);margin-bottom:6px">See your character's gear &amp; find upgrades</div>
+    <div class="mghelp"><b>First time? Do this once (about 2 minutes):</b>
+      <ol>
+        <li><b>Make your PoE profile Public</b> so the tool can read your gear.
+          Go to <a href="https://www.pathofexile.com/my-account" target="_blank">pathofexile.com → My Account</a>
+          (log in first), find <b>Privacy Settings</b>, and set your
+          <b>Characters</b> to <b>Public</b>. You can turn it back later.</li>
+        <li><b>Your account name</b> shows at the top-right after you log in at
+          <a href="https://www.pathofexile.com/login" target="_blank">pathofexile.com</a>,
+          and on the <a href="https://www.pathofexile.com/my-account" target="_blank">My Account</a> page.
+          (Type just the name, without any <code>#numbers</code>.)</li>
+        <li><b>Your character name</b> is the character you play — the name you
+          pick when you log into the game.</li>
+      </ol>
+    </div>
+    <div class="row" style="gap:12px;flex-wrap:wrap;margin-top:4px">
+      <label class="setopt">Account name
+        <input id="mgAcc" class="optin" style="width:180px" value="${esc(acc)}" placeholder="e.g. YourName"></label>
+      <label class="setopt">Character name
+        <input id="mgChar" class="optin" style="width:180px" value="${esc(chr)}" placeholder="e.g. MyWitch"></label>
+      <button class="primary" onclick="loadMyGear()">Show my gear</button>
+    </div>
+    <details style="margin-top:12px"><summary>Want to keep your profile private? (advanced)</summary>
+      <div class="mghelp" style="margin-top:6px">Log in at pathofexile.com, copy the
+      value of the <b>POESESSID</b> cookie for pathofexile.com, and paste it into
+      <b>config.json</b> next to <code>"poesessid"</code>. Then you can skip
+      step 1 (no need to make your profile public). Your login stays on your PC.</div>
+    </details>
+    <div id="myGearGrid" style="margin-top:16px"></div>
+  </div>`;
 }
 async function loadMyGear(){
-  const character=(document.getElementById('charSel')||{}).value;
+  const account=(document.getElementById('mgAcc')||{}).value.trim();
+  const character=(document.getElementById('mgChar')||{}).value.trim();
   const grid=document.getElementById('myGearGrid');
-  grid.innerHTML='<span class="spin">Loading gear…</span>';
-  let d; try{ d=await api('/api/mygear',{character}); }catch(e){ d={error:'Failed to load gear.'}; }
-  if(!d || d.error){ grid.innerHTML='<span class="err">'+esc((d&&d.error)||'Failed.')+'</span>'; return; }
+  if(!account||!character){ grid.innerHTML='<span class="err">Type your account name and character name first.</span>'; return; }
+  try{ localStorage.setItem('poe_account',account); localStorage.setItem('poe_char',character); }catch(e){}
+  grid.innerHTML='<span class="spin">Loading your gear…</span>';
+  let d; try{ d=await api('/api/mygear',{account,character},30000); }catch(e){ d={error:'Failed to load. Try again.'}; }
+  if(!d || d.error){ grid.innerHTML='<div class="err" style="line-height:1.6">'+esc((d&&d.error)||'Failed.')+'</div>'; return; }
   MYGEAR=d.slots||[];
-  if(!MYGEAR.length){ grid.innerHTML='<span class="muted">No equipped items found.</span>'; return; }
-  grid.innerHTML='<div class="muted" style="margin-bottom:8px">Click a piece to search for an upgrade:</div>'+
+  if(!MYGEAR.length){ grid.innerHTML='<span class="muted">No equipped items found for that character.</span>'; return; }
+  grid.innerHTML='<div class="ok" style="margin:6px 0 8px">✓ Found your gear — click any piece to search for an upgrade:</div>'+
     '<div class="grid">'+MYGEAR.map((s,i)=>slotCard(s,`pickMyGear(${i})`)).join('')+'</div>';
   document.getElementById('detail').classList.add('hide');
 }
