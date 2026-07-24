@@ -130,10 +130,23 @@ def _parse_item_block(text: str):
         name = base
         idx += 1
 
+    # Uniques can carry several historical versions of the item; each mod is
+    # tagged {variant:N} and the build picks one via "Selected Variant: N"
+    # (plus optional "Selected Alt Variant" for a 2nd dimension). Keep only the
+    # mods for the selected variant(s), else every version's roll shows up.
+    selected = set()
+    for ln in lines:
+        sv = re.match(r"Selected (?:Alt )?Variant(?: \d+)?:\s*(\d+)", ln)
+        if sv:
+            selected.add(sv.group(1))
+
     mods = []
     for ln in lines[idx:]:
         if any(ln.startswith(k) for k in _META_KEYS):
             continue
+        vm = re.match(r"\{variant:([\d,]+)\}", ln)
+        if vm and selected and not (set(vm.group(1).split(",")) & selected):
+            continue  # a different version's roll -- skip it
         # Strip PoB tag prefixes like {crafted}{range:0.5} and variant markers.
         clean = re.sub(r"^(\{[^}]*\})+", "", ln).strip()
         clean = re.sub(r"\{[^}]*\}", "", clean).strip()  # inline {tags}
