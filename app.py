@@ -204,6 +204,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_load(payload)
         elif self.path == "/api/search":
             self._handle_search(payload)
+        elif self.path == "/api/searchset":
+            self._handle_searchset(payload)
         elif self.path == "/api/builds/save":
             self._json(200, {"builds": _save_build(payload.get("url"),
                                                    payload.get("name"))})
@@ -291,6 +293,40 @@ class Handler(BaseHTTPRequestHandler):
             "matched": disp,
             "skipped": skipped,
         })
+
+    def _handle_searchset(self, payload):
+        """Build one trade search per item in a set, throttled to avoid the
+        trade API's rate limit. Returns a list of {slot, name, url, error}."""
+        items = payload.get("items") or []
+        opts = payload.get("opts") or {}
+        league = (payload.get("league") or _load_config()["league"]).strip()
+        idx = stats.get_index()
+        sess = _load_config().get("poesessid", "")
+        log.info("SEARCHSET: %d items, league=%s", len(items), league)
+        results = []
+        for n, it in enumerate(items):
+            itm = it.get("item") or {}
+            specs = []
+            for entry in (it.get("mods") or []):
+                line = entry.get("line", "") if isinstance(entry, dict) else entry
+                minv = entry.get("min") if isinstance(entry, dict) else None
+                m = idx.match(line)
+                if m:
+                    specs.append({"id": m["id"], "min": minv})
+            query = trade.build_query(itm, specs, use_type=True,
+                                      use_name=bool(it.get("use_name")), opts=opts)
+            url, err, note = trade.create_search_smart(query, league, sess)
+            if err and ("429" in err or "Cloudflare" in err):
+                time.sleep(3.0)  # rate-limited: back off and retry once
+                url, err, note = trade.create_search_smart(query, league, sess)
+            results.append({"slot": it.get("slot", ""),
+                            "name": itm.get("name") or itm.get("base", ""),
+                            "url": url, "error": err, "note": note})
+            if n < len(items) - 1:
+                time.sleep(0.7)  # throttle between creates
+        ok = sum(1 for r in results if r["url"])
+        log.info("SEARCHSET done: %d/%d ok", ok, len(results))
+        self._json(200, {"results": results})
 
 
 def _prewarm():

@@ -45,6 +45,9 @@ After loading, three tabs appear and stay collapsed until you pick one:
   **Tree Jewels** section (jewels socketed in the active passive tree —
   regular, cluster, unique and timeless). Each search also has **Max price**
   (+ currency), **Corrupted** (any/yes/no) and **Min links** filters.
+  **🔍 Search whole set** builds a search for every item in the stage at once
+  (throttled to respect trade rate limits) and lists an **Open ↗** link per
+  slot, plus **Open all**. Toggle whether tree jewels / flasks are included.
 - **🌳 Skill Tree** — every passive tree the build saved (usually one per
   level/stage), each with a **View tree ↗** link that opens the full
   interactive tree on pathofexile.com.

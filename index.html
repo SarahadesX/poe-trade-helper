@@ -54,6 +54,17 @@
   .gem.off{opacity:.4;text-decoration:line-through}
   .gbadge{font-size:10px;color:var(--muted);margin-left:5px;
     font-variant-numeric:tabular-nums}
+  #setbar{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:12px 0 4px}
+  .setopt{display:inline-flex;align-items:center;gap:6px;color:var(--muted);
+    font-size:13px}
+  button.mini{padding:5px 12px;font-size:12px}
+  .setrow{display:grid;grid-template-columns:150px 1fr auto;gap:12px;
+    align-items:center;padding:7px 4px;border-bottom:1px solid var(--line)}
+  .setrow:last-child{border-bottom:none}
+  .sr-slot{color:var(--muted);font-size:12px;text-transform:uppercase;
+    letter-spacing:.4px}
+  .sr-name{color:var(--gold2);overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
   .jewelhead{margin:16px 0 6px;color:var(--gold);font-size:12px;
     text-transform:uppercase;letter-spacing:.5px}
   .opts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:12px 0 2px;
@@ -138,6 +149,8 @@
 
   <div id="gearPanel" class="hide">
     <div id="tabs" class="tabs"></div>
+    <div id="setbar"></div>
+    <div id="setResults" class="hide"></div>
     <div id="slots" class="grid"></div>
     <div id="jewels"></div>
     <div id="detail" class="panel hide"></div>
@@ -150,6 +163,7 @@
 <script>
 let BUILD=null, curSet=0, curItem=null;
 let BUDGET='', CURRENCY='divine';   // remembered across searches
+let SETJEWELS=true, SETFLASKS=false, SET_URLS=[];
 
 async function api(path, body, timeoutMs){
   const ctrl = new AbortController();
@@ -201,7 +215,7 @@ async function load(){
   BUILD=d; curSet=0; curItem=null; MODE=null; curGemSet=null;
   msg.innerHTML='<span class="ok">Loaded in '+((Date.now()-t0)/1000).toFixed(1)+'s.</span> '+
     '<span class="muted">Choose Gear, Skill Tree or Gems below.</span>';
-  renderTabs(); renderSlots(); renderJewels();
+  renderTabs(); renderSlots(); renderJewels(); renderSetbar();
   showModeTabs(); renderMode();
   saveBuild(link);          // remember this build in the saved list
 }
@@ -306,7 +320,8 @@ function renderTabs(){
     `<div class="tab${i===curSet?' active':''}" onclick="pickSet(${i})">${esc(s.title)}</div>`).join('');
 }
 function pickSet(i){curSet=i;curItem=null;renderTabs();renderSlots();renderJewels();
-  document.getElementById('detail').classList.add('hide');}
+  document.getElementById('detail').classList.add('hide');
+  document.getElementById('setResults').classList.add('hide');}
 
 function slotCard(s,handler){
   return `<div class="slot r-${s.rarity}" onclick="${handler}">
@@ -328,6 +343,63 @@ function renderJewels(){
 }
 function pickSlot(i){ curItem=BUILD.item_sets[curSet].slots[i]; showDetail(); }
 function pickJewel(i){ curItem=BUILD.jewels[i]; showDetail(); }
+
+// ---- Search whole set: one throttled search per item, links listed in-app --
+function renderSetbar(){
+  document.getElementById('setbar').innerHTML=
+    `<button class="primary" onclick="doSearchSet()">🔍 Search whole set</button>
+     <label class="setopt"><input type="checkbox" ${SETJEWELS?'checked':''} onchange="SETJEWELS=this.checked"> tree jewels</label>
+     <label class="setopt"><input type="checkbox" ${SETFLASKS?'checked':''} onchange="SETFLASKS=this.checked"> flasks</label>
+     <span class="setopt">Max price <input type="number" step="any" class="optin" id="setPrice" value="${BUDGET}" placeholder="any" style="width:66px">
+       <select class="optin" id="setCur">
+         <option value="chaos"${CURRENCY==='chaos'?' selected':''}>chaos</option>
+         <option value="divine"${CURRENCY==='divine'?' selected':''}>div</option>
+         <option value="exalted"${CURRENCY==='exalted'?' selected':''}>exalt</option>
+       </select></span>`;
+}
+function itemToSearch(s){
+  return {slot:s.slot, item:{base:s.base,name:s.name,rarity:s.rarity},
+    mods:s.mods.filter(m=>m.matched).map(m=>({line:m.line,min:m.value})),
+    use_name:s.rarity==='UNIQUE'};
+}
+function gatherSetItems(){
+  const items=[];
+  for(const s of BUILD.item_sets[curSet].slots){
+    if(!SETFLASKS && /flask/i.test(s.slot)) continue;
+    items.push(itemToSearch(s));
+  }
+  if(SETJEWELS) for(const j of (BUILD.jewels||[])) items.push(itemToSearch(j));
+  return items;
+}
+async function doSearchSet(){
+  const items=gatherSetItems();
+  const el=document.getElementById('setResults'); el.classList.remove('hide');
+  if(!items.length){ el.innerHTML='<div class="panel muted">Nothing to search.</div>'; return; }
+  BUDGET=(document.getElementById('setPrice')||{}).value||'';
+  CURRENCY=(document.getElementById('setCur')||{}).value||'divine';
+  el.innerHTML='<div class="panel"><span class="spin">Building '+items.length+
+    ' searches… (~'+Math.ceil(items.length*0.9)+'s, throttled to avoid rate limits)</span></div>';
+  let d;
+  try{ d=await api('/api/searchset',{items,opts:{max_price:BUDGET,currency:CURRENCY},
+        league:document.getElementById('league').value}, 180000); }
+  catch(e){ el.innerHTML='<div class="panel err">Timed out — try again.</div>'; return; }
+  renderSetResults((d&&d.results)||[]);
+}
+function renderSetResults(res){
+  SET_URLS=res.filter(r=>r.url).map(r=>r.url);
+  const rows=res.map(r=>`<div class="setrow">
+    <span class="sr-slot">${esc(r.slot)}</span>
+    <span class="sr-name">${esc(r.name)}</span>
+    ${r.url?`<a href="${esc(r.url)}" target="_blank"><button class="mini">Open ↗</button></a>`
+           :`<span class="err" title="${esc(r.error||'')}">failed</span>`}
+  </div>`).join('');
+  document.getElementById('setResults').innerHTML='<div class="panel">'+
+    '<div class="row" style="justify-content:space-between;margin-bottom:6px">'+
+    '<span class="muted">'+SET_URLS.length+' of '+res.length+' searches ready</span>'+
+    (SET_URLS.length?'<button class="primary" onclick="openAllSet()">Open all ↗</button>':'')+
+    '</div>'+rows+'</div>';
+}
+function openAllSet(){ SET_URLS.forEach((u,i)=>setTimeout(()=>window.open(u,'_blank'), i*250)); }
 
 function showDetail(){
   const s=curItem;
