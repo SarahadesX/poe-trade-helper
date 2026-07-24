@@ -275,16 +275,17 @@ class Handler(BaseHTTPRequestHandler):
         query = trade.build_query(item, specs, use_type=True,
                                   use_name=use_name)
         cfg = _load_config()
-        url, err = trade.create_search(query, league,
-                                       cfg.get("poesessid", ""))
+        url, err, note = trade.create_search_smart(query, league,
+                                                   cfg.get("poesessid", ""))
         if err:
             log.error("SEARCH create failed: %s | query=%s", err,
                       json.dumps(query))
         else:
-            log.info("SEARCH ok -> %s", url)
+            log.info("SEARCH ok -> %s%s", url, f" ({note})" if note else "")
         self._json(200, {
             "url": url,
             "error": err,
+            "note": note,
             "query": query,
             "matched": disp,
             "skipped": skipped,

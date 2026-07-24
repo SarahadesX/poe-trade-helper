@@ -1,5 +1,6 @@
 """Build + create PoE trade searches from matched literal stats."""
 
+import copy
 import json
 import os
 import re
@@ -112,7 +113,10 @@ def build_query(item, specs, use_type=True, use_name=False):
         if t:
             query["query"]["type"] = t
     if use_name and item.get("rarity") == "UNIQUE" and item.get("name"):
-        query["query"]["name"] = item["name"]
+        # Strip PoB's variant note, e.g. "The Hand of Phrecia (+1 Corrupt)".
+        nm = re.sub(r"\s*\([^)]*\)\s*$", "", item["name"]).strip()
+        if nm:
+            query["query"]["name"] = nm
     return query
 
 
@@ -154,3 +158,30 @@ def create_search(query, league, poesessid=""):
         return None, f"HTTP {e.code}: {detail}"
     except Exception as e:
         return None, f"Request failed: {e}"
+
+
+def create_search_smart(query, league, poesessid=""):
+    """Create a search; if trade rejects the name/type, progressively drop them
+    so the user still gets a working search. Returns (url, error, note)."""
+    url, err = create_search(query, league, poesessid)
+    if not err:
+        return url, None, None
+    # Trade doesn't know this exact unique name (often a corrupted/variant
+    # item) -> drop the name and search by base type + stats.
+    if "Unknown item name" in err and query["query"].get("name"):
+        q = copy.deepcopy(query)
+        q["query"].pop("name", None)
+        url, err = create_search(q, league, poesessid)
+        if not err:
+            return url, None, ("Trade didn't recognise the unique's exact name, "
+                               "so it searched by base type + stats instead.")
+    # Base type also unrecognised -> drop it and search by stats only.
+    if err and "Unknown item" in err and query["query"].get("type"):
+        q = copy.deepcopy(query)
+        q["query"].pop("name", None)
+        q["query"].pop("type", None)
+        url, err = create_search(q, league, poesessid)
+        if not err:
+            return url, None, ("Trade didn't recognise the item's base type, "
+                               "so it searched by stats only.")
+    return url, err, None

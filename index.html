@@ -274,8 +274,9 @@ async function doSearch(){
     mods, league:document.getElementById('league').value, use_name:useName});
   let h='<div style="margin-top:14px">';
   if(d.url){
-    h+=`<div class="ok">✓ Search ready.</div>
-        <div style="margin-top:8px"><a href="${d.url}" target="_blank"><button class="primary">Open in PoE Trade ↗</button></a></div>`;
+    h+=`<div class="ok">✓ Search ready.</div>`;
+    if(d.note){ h+=`<div class="muted" style="margin-top:6px">ⓘ ${esc(d.note)}</div>`; }
+    h+=`<div style="margin-top:8px"><a href="${d.url}" target="_blank"><button class="primary">Open in PoE Trade ↗</button></a></div>`;
     window.open(d.url,'_blank');
   }else{
     h+=`<div class="err">Couldn't auto-create the search: ${esc(d.error||'')}</div>
