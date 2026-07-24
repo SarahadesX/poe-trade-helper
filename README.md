@@ -10,11 +10,16 @@ zip, or updates won't work):
 ```
 git clone https://github.com/SarahadesX/poe-trade-helper.git
 ```
-Double-click **`Run PoE Trade Helper.bat`**. Every launch runs `git pull` first,
-so you always get the newest version automatically.
+Double-click **`Start PoE Trade Helper.vbs`**. It updates itself, opens in your
+browser, and runs with **no console window**. **Close the browser tab to stop
+it** (the server shuts itself down a few seconds later).
+
+If nothing happens (e.g. Python not installed), double-click
+**`Run PoE Trade Helper.bat`** instead — it shows a console with any error.
 
 ## Use
-1. Double-click **`Run PoE Trade Helper.bat`** (or `python app.py`).
+1. Double-click **`Start PoE Trade Helper.vbs`** (hidden), or
+   **`Run PoE Trade Helper.bat`** to see the console.
    Opens http://localhost:8770 in your browser.
 2. Paste one of:
    - a **maxroll.gg build guide** URL (e.g. `.../poe/build-guides/...`) — the

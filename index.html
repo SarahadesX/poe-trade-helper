@@ -243,6 +243,18 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>(
   {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
 initLeagues();
+
+// Keep-alive: while this tab is open, an SSE connection stays open to the
+// server. Closing the tab drops it and the server shuts itself down. A reload
+// just reconnects (the browser auto-reconnects EventSource), so it survives.
+let _keepAlive;
+function connectKeepAlive(){
+  try{
+    _keepAlive = new EventSource('/api/keepalive');
+    _keepAlive.onerror = ()=>{};  // browser auto-reconnects
+  }catch(e){}
+}
+connectKeepAlive();
 </script>
 </body>
 </html>

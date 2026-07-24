@@ -52,9 +52,47 @@ def _load_config():
     return cfg
 
 
+# ---- Auto-shutdown when the browser tab closes ------------------------------
+# The page holds an SSE connection (/api/keepalive) open the whole time it's on
+# screen. Closing the tab drops that connection; if none reconnects within the
+# grace window the server quits itself (there's no console to Ctrl+C when it's
+# launched hidden). A reload reconnects well within the grace, so it survives.
+_ka_lock = threading.Lock()
+_active_keepalives = 0
+_client_seen = False
+_last_disconnect = 0.0
+_start_time = time.time()
+SHUTDOWN_GRACE = 5.0    # seconds after the last tab closes before quitting
+STARTUP_GRACE = 180.0   # quit if a browser never connects at all
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass  # quiet
+
+    def _handle_keepalive(self):
+        global _active_keepalives, _client_seen, _last_disconnect
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+        except Exception:
+            return
+        with _ka_lock:
+            _active_keepalives += 1
+            _client_seen = True
+        try:
+            while True:
+                self.wfile.write(b": keepalive\n\n")
+                self.wfile.flush()
+                time.sleep(2)
+        except Exception:
+            pass  # tab closed -> socket write fails
+        finally:
+            with _ka_lock:
+                _active_keepalives -= 1
+                _last_disconnect = time.time()
 
     def _send(self, code, body, ctype="application/json"):
         data = body.encode("utf-8") if isinstance(body, str) else body
@@ -72,6 +110,8 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             with open(os.path.join(HERE, "index.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
+        elif path == "/api/keepalive":
+            self._handle_keepalive()
         elif path == "/api/leagues":
             cfg = _load_config()
             self._json(200, {"leagues": trade.get_leagues(),
@@ -189,6 +229,25 @@ class Server(ThreadingHTTPServer):
     # so requests hit an arbitrary one. Disable it: a second launch fails
     # loudly instead of shadowing the running server.
     allow_reuse_address = False
+    daemon_threads = True
+
+
+def _watchdog(server):
+    """Quit the process when the browser is gone (no console to Ctrl+C)."""
+    while True:
+        time.sleep(1.0)
+        with _ka_lock:
+            active, seen, last = _active_keepalives, _client_seen, _last_disconnect
+        now = time.time()
+        if not seen and now - _start_time > STARTUP_GRACE:
+            log.info("No browser connected in %.0fs - shutting down.",
+                     STARTUP_GRACE)
+            server.shutdown()
+            return
+        if seen and active == 0 and now - last > SHUTDOWN_GRACE:
+            log.info("Browser closed - shutting down server.")
+            server.shutdown()
+            return
 
 
 def main():
@@ -206,15 +265,18 @@ def main():
     print(f"PoE Trade Helper running at {url}")
     print(f"Logs: {os.path.join(LOG_DIR, 'app.log')}  |  Errors: "
           f"{os.path.join(LOG_DIR, 'errors.log')}")
-    print("Press Ctrl+C to stop.")
+    print("Close the browser tab to stop it (or Ctrl+C here).")
     # Warm caches in the background so the UI opens immediately.
     threading.Thread(target=_prewarm, daemon=True).start()
+    threading.Thread(target=_watchdog, args=(server,), daemon=True).start()
     threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nStopped.")
         server.shutdown()
+    log.info("Server stopped.")
+    server.server_close()
 
 
 if __name__ == "__main__":
