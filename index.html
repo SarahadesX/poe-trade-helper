@@ -67,6 +67,9 @@
     white-space:nowrap}
   .sr-price{text-align:right;color:var(--text);font-variant-numeric:tabular-nums}
   .sr-price b{color:var(--gold2)}
+  .setrow.over{background:rgba(201,106,90,.13);border-radius:6px}
+  .setrow.over .sr-price b{color:var(--bad)}
+  .over-lbl{color:var(--bad);font-size:11px;font-weight:600}
   .totalbox{background:#20180d;border:1px solid var(--gold);border-radius:10px;
     padding:14px 18px;text-align:center}
   .tlabel{color:var(--muted);font-size:13px;text-transform:uppercase;
@@ -359,12 +362,12 @@ function renderSetbar(){
     `<button class="primary" onclick="doSearchSet()">🔍 Search whole set</button>
      <label class="setopt"><input type="checkbox" ${SETJEWELS?'checked':''} onchange="SETJEWELS=this.checked"> tree jewels</label>
      <label class="setopt"><input type="checkbox" ${SETFLASKS?'checked':''} onchange="SETFLASKS=this.checked"> flasks</label>
-     <span class="setopt">Max price <input type="number" step="any" class="optin" id="setPrice" value="${BUDGET}" placeholder="any" style="width:66px">
+     <span class="setopt">Budget / item <input type="number" step="any" class="optin" id="setPrice" value="${BUDGET}" placeholder="none" style="width:60px">
        <select class="optin" id="setCur">
-         <option value="chaos"${CURRENCY==='chaos'?' selected':''}>chaos</option>
          <option value="divine"${CURRENCY==='divine'?' selected':''}>div</option>
-         <option value="exalted"${CURRENCY==='exalted'?' selected':''}>exalt</option>
-       </select></span>`;
+         <option value="chaos"${CURRENCY==='chaos'?' selected':''}>chaos</option>
+       </select>
+       <span class="muted" style="font-size:12px">(pricier items turn red)</span></span>`;
 }
 function itemToSearch(s){
   return {slot:s.slot, item:{base:s.base,name:s.name,rarity:s.rarity},
@@ -392,7 +395,7 @@ async function doSearchSet(){
       Math.round((Date.now()-t0)/1000)+'s of about '+est+'s. Please wait.</span></div>';
   },300);
   let d;
-  try{ d=await api('/api/searchset',{items,opts:{max_price:BUDGET,currency:CURRENCY},
+  try{ d=await api('/api/searchset',{items, budget:BUDGET, budget_currency:CURRENCY,
         league:document.getElementById('league').value}, 240000); }
   catch(e){ clearInterval(tick); el.innerHTML='<div class="panel err">Timed out — try again.</div>'; return; }
   clearInterval(tick);
@@ -404,26 +407,33 @@ function fmtPrice(p){
   const a=(p.amount%1===0)?p.amount:p.amount.toFixed(1);
   return '<b>'+a+'</b> '+c;
 }
-function totalText(totals){
-  const order={divine:0,exalted:1,chaos:2};
-  const keys=Object.keys(totals||{}).sort((a,b)=>((order[a]??9)-(order[b]??9)));
+function totalText(meta){
+  const tc=meta&&meta.total_chaos, dr=meta&&meta.divine_rate;
+  if(tc>0 && dr){
+    if(tc>=dr) return '<b>'+(tc/dr).toFixed(1)+'</b> Divine <span class="tsub">(about '+Math.round(tc)+' Chaos)</span>';
+    return '<b>'+Math.round(tc)+'</b> Chaos';
+  }
+  // Fallback (no divine rate): show per-currency subtotals.
+  const totals=(meta&&meta.totals)||{}, order={divine:0,exalted:1,chaos:2};
+  const keys=Object.keys(totals).sort((a,b)=>((order[a]??9)-(order[b]??9)));
   if(!keys.length) return 'No prices found';
   return keys.map(c=>{const v=totals[c]; const amt=(v%1===0)?v:v.toFixed(1);
     return '<b>'+amt+'</b> '+c.charAt(0).toUpperCase()+c.slice(1);}).join('  +  ');
 }
 function renderSetResults(res, meta){
   SET_URLS=res.filter(r=>r.url).map(r=>r.url);
-  const rows=res.map(r=>`<div class="setrow">
+  const anyOver=res.some(r=>r.over);
+  const rows=res.map(r=>`<div class="setrow${r.over?' over':''}">
     <span class="sr-slot">${esc(r.slot)}</span>
     <span class="sr-name">${esc(r.name)}</span>
-    <span class="sr-price">${fmtPrice(r.price)}</span>
+    <span class="sr-price">${fmtPrice(r.price)}${r.over?' <span class="over-lbl">over budget</span>':''}</span>
     ${r.url?`<a href="${esc(r.url)}" target="_blank"><button class="mini">Buy ↗</button></a>`
            :`<span class="err" title="${esc(r.error||'')}">not found</span>`}
   </div>`).join('');
-  const t=totalText(meta&&meta.totals);
   document.getElementById('setResults').innerHTML='<div class="panel">'+
     '<div class="totalbox"><div class="tlabel">Rough cost to buy this gear now</div>'+
-      '<div class="tbig">≈ '+t+'</div>'+
+      '<div class="tbig">≈ '+totalText(meta)+'</div>'+
+      (anyOver?'<div class="tnote"><span class="over-lbl">Red</span> = costs more than your budget of '+esc(BUDGET)+' '+esc(CURRENCY)+' — pricey pieces to save up for.</div>':'')+
       '<div class="tnote">Prices change all the time — this is only a guide. Click <b>Buy</b> to see live listings.</div>'+
     '</div>'+
     '<div class="row" style="justify-content:space-between;margin:10px 0 6px">'+

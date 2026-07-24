@@ -187,8 +187,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"builds": _read_builds()})
         elif path == "/api/leagues":
             cfg = _load_config()
-            self._json(200, {"leagues": trade.get_leagues(),
-                             "current": cfg.get("league", "Standard")})
+            leagues = trade.get_leagues()
+            # Prefer the live challenge league (e.g. Curse of the Allflame);
+            # fall back to config, then Standard, when between leagues.
+            current = (trade.current_league(leagues)
+                       or cfg.get("league") or "Standard")
+            self._json(200, {"leagues": leagues, "current": current})
         else:
             self._send(404, "not found", "text/plain")
 
@@ -295,15 +299,34 @@ class Handler(BaseHTTPRequestHandler):
         })
 
     def _handle_searchset(self, payload):
-        """Build one trade search per item in a set, throttled to avoid the
-        trade API's rate limit. Returns a list of {slot, name, url, error}."""
+        """One throttled trade search per item; fetch each cheapest price,
+        convert to chaos (via divine rate) for a total, and flag items whose
+        price exceeds the per-item budget."""
         items = payload.get("items") or []
-        opts = payload.get("opts") or {}
         league = (payload.get("league") or _load_config()["league"]).strip()
         idx = stats.get_index()
         sess = _load_config().get("poesessid", "")
-        log.info("SEARCHSET: %d items, league=%s", len(items), league)
-        results, totals = [], {}
+        rate = trade.get_divine_rate(league)
+        ratemap = {"chaos": 1.0}
+        if rate:
+            ratemap["divine"] = rate
+
+        def to_chaos(amount, cur):
+            r = ratemap.get(cur)
+            return amount * r if r else None
+
+        try:
+            budget_amt = float(payload.get("budget")) if payload.get(
+                "budget") not in (None, "") else None
+        except (TypeError, ValueError):
+            budget_amt = None
+        budget_cur = payload.get("budget_currency") or "divine"
+        budget_chaos = (to_chaos(budget_amt, budget_cur)
+                        if budget_amt is not None else None)
+
+        log.info("SEARCHSET: %d items, league=%s, budget=%s", len(items),
+                 league, budget_chaos)
+        results, totals, total_chaos, unconvertible = [], {}, 0.0, False
         for n, it in enumerate(items):
             itm = it.get("item") or {}
             specs = []
@@ -314,24 +337,35 @@ class Handler(BaseHTTPRequestHandler):
                 if m:
                     specs.append({"id": m["id"], "min": minv})
             query = trade.build_query(itm, specs, use_type=True,
-                                      use_name=bool(it.get("use_name")), opts=opts)
+                                      use_name=bool(it.get("use_name")))
             res = trade.search_and_price(query, league, sess)
             if res["error"] and ("429" in res["error"] or "Cloudflare" in res["error"]):
                 time.sleep(3.0)  # rate-limited: back off and retry once
                 res = trade.search_and_price(query, league, sess)
-            price = res.get("price")
+            price, over = res.get("price"), False
             if price:
                 totals[price["currency"]] = round(
                     totals.get(price["currency"], 0) + price["amount"], 1)
+                chaos = to_chaos(price["amount"], price["currency"])
+                if chaos is not None:
+                    total_chaos += chaos
+                    if budget_chaos is not None and chaos > budget_chaos:
+                        over = True
+                else:
+                    unconvertible = True
             results.append({"slot": it.get("slot", ""),
                             "name": itm.get("name") or itm.get("base", ""),
                             "url": res["url"], "error": res["error"],
-                            "price": price, "count": res.get("count", 0)})
+                            "price": price, "over": over,
+                            "count": res.get("count", 0)})
             if n < len(items) - 1:
                 time.sleep(0.6)  # throttle
         ok = sum(1 for r in results if r["url"])
-        log.info("SEARCHSET done: %d/%d ok, totals=%s", ok, len(results), totals)
-        self._json(200, {"results": results, "totals": totals})
+        log.info("SEARCHSET done: %d/%d ok, ~%.0f chaos", ok, len(results),
+                 total_chaos)
+        self._json(200, {"results": results, "totals": totals,
+                         "total_chaos": round(total_chaos, 1),
+                         "divine_rate": rate, "unconvertible": unconvertible})
 
 
 def _prewarm():

@@ -47,9 +47,10 @@ After loading, three tabs appear and stay collapsed until you pick one:
   (+ currency), **Corrupted** (any/yes/no) and **Min links** filters.
   **🔍 Search whole set** builds a search for every item in the stage at once
   (throttled to respect trade rate limits), fetches the **cheapest price** for
-  each, and shows a **rough total cost** ("≈ 40 Chaos + 2 Divine") plus a
-  **Buy ↗** link per item and **Open all**. Toggle tree jewels / flasks.
-  Prices are a live guide only — click Buy for the real listings.
+  each, and shows a **rough total cost** (e.g. "≈ 12.5 Divine") plus a
+  **Buy ↗** link per item and **Open all**. Set a **Budget / item** and any
+  pricier piece is highlighted **red** ("save up for"). Toggle tree jewels /
+  flasks. Prices are a live guide only — click Buy for the real listings.
 - **🌳 Skill Tree** — every passive tree the build saved (usually one per
   level/stage), each with a **View tree ↗** link that opens the full
   interactive tree on pathofexile.com.
@@ -75,6 +76,11 @@ load is fast rather than stalling on "decoding".
 
 Only one instance can run at a time — launching a second prints "already
 running" instead of silently clashing on the port.
+
+## League
+The **League** box defaults to the **current challenge league** automatically
+(detected from the trade site the moment it goes live — e.g. Curse of the
+Allflame), so you don't have to set it. You can still type any league name.
 
 ## Config (`config.json`)
 - `league` — default league (also selectable in the header dropdown).

@@ -27,10 +27,11 @@ def _load_config():
 
 
 def get_leagues():
-    """Return list of league ids (main realm), cached 1 day."""
+    """Return list of league ids (main realm). Cached 10 min so a new league
+    (which appears in the trade API only at launch) is picked up quickly."""
     os.makedirs(CACHE_DIR, exist_ok=True)
     p = os.path.join(CACHE_DIR, "leagues.json")
-    if os.path.exists(p) and time.time() - os.path.getmtime(p) < 86400:
+    if os.path.exists(p) and time.time() - os.path.getmtime(p) < 600:
         with open(p, "r", encoding="utf-8") as f:
             return json.load(f)
     try:
@@ -44,6 +45,22 @@ def get_leagues():
         return leagues
     except Exception:
         return ["Standard", "Hardcore"]
+
+
+_PERMANENT = {"Standard", "Hardcore", "Ruthless", "Hardcore Ruthless"}
+
+
+def current_league(leagues):
+    """The live softcore challenge league (e.g. 'Curse of the Allflame'),
+    auto-detected as the first non-permanent, non-HC, non-Ruthless pc league.
+    Returns None between leagues (nothing but permanent leagues live)."""
+    for lg in leagues:
+        if lg in _PERMANENT:
+            continue
+        if lg.startswith("Hardcore") or "Ruthless" in lg or "SSF" in lg:
+            continue
+        return lg
+    return None
 
 
 # Clean flask base types (magic flasks store an affixed name, not the base).
@@ -211,6 +228,43 @@ def _fetch_price(item_hash, sid, league, poesessid=""):
         return {"amount": float(amt), "currency": cur} if amt and cur else None
     except Exception:
         return None
+
+
+_DIV_RATE_CACHE = {}
+
+
+def get_divine_rate(league):
+    """Chaos per Divine Orb from GGG's bulk-exchange (median ignores troll
+    listings). Cached 1h. Returns float or None."""
+    hit = _DIV_RATE_CACHE.get(league)
+    if hit and time.time() - hit[0] < 3600:
+        return hit[1]
+    rate = None
+    try:
+        body = json.dumps({"query": {"status": {"option": "online"},
+                                     "have": ["chaos"], "want": ["divine"]},
+                           "sort": {"have": "asc"}, "engine": "new"}).encode()
+        u = ("https://www.pathofexile.com/api/trade/exchange/"
+             + urllib.parse.quote(league))
+        req = urllib.request.Request(
+            u, data=body, method="POST",
+            headers={"User-Agent": UA, "Content-Type": "application/json",
+                     "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        ratios = []
+        for v in (data.get("result") or {}).values():
+            for o in ((v.get("listing") or {}).get("offers") or []):
+                it, ex = o.get("item") or {}, o.get("exchange") or {}
+                if it.get("amount") and ex.get("amount"):
+                    ratios.append(ex["amount"] / it["amount"])
+        ratios.sort()
+        if ratios:
+            rate = ratios[len(ratios) // 2]  # median
+    except Exception:
+        pass
+    _DIV_RATE_CACHE[league] = (time.time(), rate)
+    return rate
 
 
 def search_and_price(query, league, poesessid=""):
