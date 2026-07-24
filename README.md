@@ -41,7 +41,10 @@ remove it. The list is stored in `saved_builds.txt`.
 
 ### Gear / Skill Tree / Gems tabs
 After loading, three tabs appear and stay collapsed until you pick one:
-- **🛡 Gear** — the item-set stages + click-a-slot trade search (above).
+- **🛡 Gear** — the item-set stages + click-a-slot trade search (above), plus a
+  **Tree Jewels** section (jewels socketed in the active passive tree —
+  regular, cluster, unique and timeless). Each search also has **Max price**
+  (+ currency), **Corrupted** (any/yes/no) and **Min links** filters.
 - **🌳 Skill Tree** — every passive tree the build saved (usually one per
   level/stage), each with a **View tree ↗** link that opens the full
   interactive tree on pathofexile.com.

@@ -273,7 +273,8 @@ class Handler(BaseHTTPRequestHandler):
             disp.append({"text": line, "id": m["id"], "value": minv})
 
         query = trade.build_query(item, specs, use_type=True,
-                                  use_name=use_name)
+                                  use_name=use_name,
+                                  opts=payload.get("opts") or {})
         cfg = _load_config()
         url, err, note = trade.create_search_smart(query, league,
                                                    cfg.get("poesessid", ""))

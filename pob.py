@@ -209,7 +209,40 @@ def parse_build(link_or_code: str) -> dict:
         raise ValueError("No equipped items found in this build.")
 
     return {"item_sets": sets, "trees": _parse_trees(root),
-            "skills": _parse_skills(root)}
+            "skills": _parse_skills(root),
+            "jewels": _parse_tree_jewels(root, items_by_id)}
+
+
+def _parse_tree_jewels(root, items_by_id):
+    """Jewels socketed into the passive tree (regular/cluster/unique/timeless).
+    Stored per tree Spec as <Socket nodeId=.. itemId=..>; we take the active
+    spec's sockets and resolve each itemId to its jewel item."""
+    tree = root.find("Tree")
+    if tree is None:
+        return []
+    specs = tree.findall("Spec")
+    if not specs:
+        return []
+    active = tree.get("activeSpec", "")
+    idx = int(active) - 1 if active.isdigit() else 0
+    if not 0 <= idx < len(specs):
+        idx = 0
+    socks = specs[idx].find("Sockets")
+    if socks is None:
+        return []
+    jewels, seen = [], set()
+    for so in socks.findall("Socket"):
+        iid = so.get("itemId")
+        if not iid or iid == "0" or iid in seen:
+            continue
+        it = items_by_id.get(iid)
+        if not it:
+            continue
+        seen.add(iid)
+        jewels.append({"slot": "Tree Jewel", "name": it["name"],
+                       "base": it["base"], "rarity": it["rarity"],
+                       "mods": it["mods"]})
+    return jewels
 
 
 def _parse_skills(root):

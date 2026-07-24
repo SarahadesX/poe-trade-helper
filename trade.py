@@ -83,12 +83,13 @@ def resolve_type(item):
     return base or None
 
 
-def build_query(item, specs, use_type=True, use_name=False):
+def build_query(item, specs, use_type=True, use_name=False, opts=None):
     """Assemble the trade query JSON.
 
     item: parsed slot dict (base, name, rarity).
     specs: list of {id, min} — min may be None to add the stat filter with an
     EMPTY min box (so the user can type a threshold on the trade site).
+    opts: {max_price, currency, corrupted, min_links} extra search filters.
     """
     filters = []
     for sp in specs:
@@ -113,10 +114,36 @@ def build_query(item, specs, use_type=True, use_name=False):
         if t:
             query["query"]["type"] = t
     if use_name and item.get("rarity") == "UNIQUE" and item.get("name"):
-        # Strip PoB's variant note, e.g. "The Hand of Phrecia (+1 Corrupt)".
-        nm = re.sub(r"\s*\([^)]*\)\s*$", "", item["name"]).strip()
+        # Strip PoB's trailing notes, e.g. "The Hand of Phrecia (+1 Corrupt)" or
+        # a timeless jewel's "Elegant Hubris [9000; 3; Pain Attunement]".
+        nm = re.sub(r"(\s*(\([^)]*\)|\[[^\]]*\]))+\s*$", "", item["name"]).strip()
         if nm:
             query["query"]["name"] = nm
+
+    # Budget / corrupted / links filters.
+    opts = opts or {}
+    fdict = {}
+    try:
+        max_price = float(opts["max_price"]) if opts.get("max_price") not in (
+            None, "") else None
+    except (TypeError, ValueError):
+        max_price = None
+    if max_price is not None:
+        fdict.setdefault("trade_filters", {}).setdefault("filters", {})[
+            "price"] = {"max": max_price, "option": opts.get("currency") or "chaos"}
+    if opts.get("corrupted") in ("true", "false"):
+        fdict.setdefault("misc_filters", {}).setdefault("filters", {})[
+            "corrupted"] = {"option": opts["corrupted"]}
+    try:
+        min_links = int(opts["min_links"]) if opts.get("min_links") not in (
+            None, "") else None
+    except (TypeError, ValueError):
+        min_links = None
+    if min_links:
+        fdict.setdefault("socket_filters", {}).setdefault("filters", {})[
+            "links"] = {"min": min_links}
+    if fdict:
+        query["query"]["filters"] = fdict
     return query
 
 

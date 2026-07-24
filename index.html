@@ -54,6 +54,15 @@
   .gem.off{opacity:.4;text-decoration:line-through}
   .gbadge{font-size:10px;color:var(--muted);margin-left:5px;
     font-variant-numeric:tabular-nums}
+  .jewelhead{margin:16px 0 6px;color:var(--gold);font-size:12px;
+    text-transform:uppercase;letter-spacing:.5px}
+  .opts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:12px 0 2px;
+    padding:10px 12px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;font-size:13px;color:var(--muted)}
+  .opt{display:inline-flex;align-items:center;gap:6px}
+  .optin{background:#0b0a08;border:1px solid var(--line);border-radius:5px;
+    padding:4px 6px;color:var(--text)}
+  .optin:focus{border-color:var(--gold);outline:none}
   .saved{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
   .saved:empty{margin:0}
   .bchip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);
@@ -130,6 +139,7 @@
   <div id="gearPanel" class="hide">
     <div id="tabs" class="tabs"></div>
     <div id="slots" class="grid"></div>
+    <div id="jewels"></div>
     <div id="detail" class="panel hide"></div>
   </div>
 
@@ -138,7 +148,8 @@
 </div>
 
 <script>
-let BUILD=null, curSet=0, curSlot=null;
+let BUILD=null, curSet=0, curItem=null;
+let BUDGET='', CURRENCY='divine';   // remembered across searches
 
 async function api(path, body, timeoutMs){
   const ctrl = new AbortController();
@@ -187,10 +198,10 @@ async function load(){
   }
   clearInterval(tick);
   if(!d || d.error){msg.innerHTML='<span class="err">'+esc((d&&d.error)||'No response')+'</span>';return;}
-  BUILD=d; curSet=0; curSlot=null; MODE=null; curGemSet=null;
+  BUILD=d; curSet=0; curItem=null; MODE=null; curGemSet=null;
   msg.innerHTML='<span class="ok">Loaded in '+((Date.now()-t0)/1000).toFixed(1)+'s.</span> '+
     '<span class="muted">Choose Gear, Skill Tree or Gems below.</span>';
-  renderTabs(); renderSlots();
+  renderTabs(); renderSlots(); renderJewels();
   showModeTabs(); renderMode();
   saveBuild(link);          // remember this build in the saved list
 }
@@ -294,23 +305,32 @@ function renderTabs(){
   t.innerHTML = BUILD.item_sets.map((s,i)=>
     `<div class="tab${i===curSet?' active':''}" onclick="pickSet(${i})">${esc(s.title)}</div>`).join('');
 }
-function pickSet(i){curSet=i;curSlot=null;renderTabs();renderSlots();
+function pickSet(i){curSet=i;curItem=null;renderTabs();renderSlots();renderJewels();
   document.getElementById('detail').classList.add('hide');}
 
-function renderSlots(){
-  const g=document.getElementById('slots');
-  const slots=BUILD.item_sets[curSet].slots;
-  g.innerHTML = slots.map((s,i)=>
-    `<div class="slot r-${s.rarity}" onclick="pickSlot(${i})">
-       <div class="sn">${esc(s.slot)}</div>
-       <div class="in">${esc(s.name||s.base)}</div>
-       <div class="ib">${esc(s.base)}</div>
-     </div>`).join('');
+function slotCard(s,handler){
+  return `<div class="slot r-${s.rarity}" onclick="${handler}">
+     <div class="sn">${esc(s.slot)}</div>
+     <div class="in">${esc(s.name||s.base)}</div>
+     <div class="ib">${esc(s.base)}</div>
+   </div>`;
 }
+function renderSlots(){
+  document.getElementById('slots').innerHTML =
+    BUILD.item_sets[curSet].slots.map((s,i)=>slotCard(s,`pickSlot(${i})`)).join('');
+}
+function renderJewels(){
+  const el=document.getElementById('jewels');
+  const jw=(BUILD&&BUILD.jewels)||[];
+  if(!jw.length){ el.innerHTML=''; return; }
+  el.innerHTML='<div class="jewelhead">Tree jewels ('+jw.length+')</div><div class="grid">'+
+    jw.map((s,i)=>slotCard(s,`pickJewel(${i})`)).join('')+'</div>';
+}
+function pickSlot(i){ curItem=BUILD.item_sets[curSet].slots[i]; showDetail(); }
+function pickJewel(i){ curItem=BUILD.jewels[i]; showDetail(); }
 
-function pickSlot(i){
-  curSlot=i;
-  const s=BUILD.item_sets[curSet].slots[i];
+function showDetail(){
+  const s=curItem;
   const d=document.getElementById('detail');
   d.classList.remove('hide');
   const uniq = s.rarity==='UNIQUE';
@@ -338,11 +358,24 @@ function pickSlot(i){
     <div style="margin:14px 0 4px" class="muted">Each <b>min</b> is pre-filled from the build — just hit search, or raise a value for a better roll (clear a box = any):</div>
     <div>${rows||'<span class="muted">No mods.</span>'}</div>
     ${uniq?'<label class="row" style="margin-top:10px"><input type="checkbox" id="useName" checked> match this unique by name</label>':''}
+    <div class="opts">
+      <span class="opt">Max price <input type="number" step="any" class="optin" id="optPrice" value="${BUDGET}" placeholder="any" style="width:66px">
+        <select class="optin" id="optCur">
+          <option value="chaos"${CURRENCY==='chaos'?' selected':''}>chaos</option>
+          <option value="divine"${CURRENCY==='divine'?' selected':''}>div</option>
+          <option value="exalted"${CURRENCY==='exalted'?' selected':''}>exalt</option>
+        </select></span>
+      <span class="opt">Corrupted
+        <select class="optin" id="optCorr">
+          <option value="">any</option><option value="true">yes</option><option value="false">no</option>
+        </select></span>
+      <span class="opt">Min links <input type="number" class="optin" id="optLinks" placeholder="any" style="width:52px"></span>
+    </div>
     <div id="searchOut"></div>`;
 }
 
 async function doSearch(){
-  const s=BUILD.item_sets[curSet].slots[curSlot];
+  const s=curItem;
   const mods=[];
   for(const row of document.querySelectorAll('#detail .modline')){
     const cb=row.querySelector('.modcheck');
@@ -353,11 +386,17 @@ async function doSearch(){
     mods.push({line:cb.dataset.line, min});
   }
   const useName = !!(document.getElementById('useName')||{}).checked;
+  // Budget / corrupted / links (budget currency is remembered).
+  BUDGET=(document.getElementById('optPrice')||{}).value||'';
+  CURRENCY=(document.getElementById('optCur')||{}).value||'divine';
+  const opts={ max_price:BUDGET, currency:CURRENCY,
+    corrupted:(document.getElementById('optCorr')||{}).value||'',
+    min_links:(document.getElementById('optLinks')||{}).value||'' };
   const out=document.getElementById('searchOut');
   out.innerHTML='<div class="spin" style="margin-top:12px">Creating trade search…</div>';
   const d=await api('/api/search',{
     item:{base:s.base,name:s.name,rarity:s.rarity},
-    mods, league:document.getElementById('league').value, use_name:useName});
+    mods, opts, league:document.getElementById('league').value, use_name:useName});
   let h='<div style="margin-top:14px">';
   if(d.url){
     h+=`<div class="ok">✓ Search ready.</div>`;
