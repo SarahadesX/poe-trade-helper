@@ -1,0 +1,6 @@
+# Runtime + machine-local files — never published
+logs/
+cache/
+__pycache__/
+*.pyc
+config.json

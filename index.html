@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PoE Trade Helper</title>
+<style>
+  :root{
+    --bg:#0e0d0b; --panel:#1a1712; --panel2:#221d16; --line:#3a3226;
+    --gold:#c8aa6e; --gold2:#e6c98a; --text:#d6cbb4; --muted:#8a7f6a;
+    --good:#7bbf6a; --bad:#c96a5a; --blue:#5aa0d6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.5 "Segoe UI",system-ui,sans-serif}
+  a{color:var(--gold2)}
+  header{padding:16px 22px;border-bottom:1px solid var(--line);
+    display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:#120f0b}
+  header h1{font-size:18px;margin:0;color:var(--gold);letter-spacing:.5px}
+  .wrap{max-width:1100px;margin:0 auto;padding:20px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  input,select,button,textarea{font:inherit;color:var(--text)}
+  input[type=text],select{background:var(--panel2);border:1px solid var(--line);
+    border-radius:6px;padding:9px 11px}
+  input[type=text]{flex:1;min-width:280px}
+  #league{flex:0 0 auto;min-width:150px;width:190px}
+  button{background:var(--panel2);border:1px solid var(--gold);color:var(--gold2);
+    border-radius:6px;padding:9px 16px;cursor:pointer;transition:.15s}
+  button:hover{background:#2c2417}
+  button.primary{background:var(--gold);color:#1a140a;border-color:var(--gold)}
+  button.primary:hover{background:var(--gold2)}
+  .tabs{display:flex;gap:8px;margin:18px 0 6px;flex-wrap:wrap}
+  .tab{padding:7px 14px;border:1px solid var(--line);border-radius:20px;
+    cursor:pointer;color:var(--muted)}
+  .tab.active{border-color:var(--gold);color:var(--gold2);background:#20180d}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+    gap:10px;margin-top:12px}
+  .slot{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:11px 12px;cursor:pointer;transition:.15s}
+  .slot:hover{border-color:var(--gold);background:var(--panel2)}
+  .slot .sn{font-size:11px;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.5px}
+  .slot .in{color:var(--gold2);font-weight:600;margin-top:3px}
+  .slot .ib{font-size:12px;color:var(--muted)}
+  .r-UNIQUE .in{color:#af6025}
+  .r-RARE .in{color:#e6c98a}
+  .r-MAGIC .in{color:#8888ff}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:18px;margin-top:20px}
+  .modline{display:flex;gap:10px;align-items:flex-start;padding:6px 8px;
+    border-radius:6px}
+  .modline:hover{background:var(--panel2)}
+  .modline.no{opacity:.55}
+  .modline .modcheck{margin-top:4px}
+  .modline .mtxt{flex:1}
+  .minwrap{font-size:12px;color:var(--muted);white-space:nowrap;margin-left:auto}
+  .mininput{width:74px;background:#0b0a08;border:1px solid var(--line);
+    border-radius:5px;padding:4px 6px;color:var(--blue);
+    font-variant-numeric:tabular-nums}
+  .mininput:focus{border-color:var(--gold);outline:none}
+  .tag{font-size:10px;padding:1px 6px;border-radius:10px;margin-left:6px}
+  .tag.ok{background:#1e2e19;color:var(--good);border:1px solid #33512a}
+  .tag.miss{background:#2e1c19;color:var(--bad);border:1px solid #512f2a}
+  .val{color:var(--blue);font-variant-numeric:tabular-nums}
+  .muted{color:var(--muted)}
+  .err{color:var(--bad)}
+  .ok{color:var(--good)}
+  pre{background:#0b0a08;border:1px solid var(--line);border-radius:6px;
+    padding:10px;overflow:auto;font-size:12px;color:#b9ad93;max-height:240px}
+  .hide{display:none}
+  .spin{color:var(--muted)}
+  details summary{cursor:pointer;color:var(--muted);margin-top:10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚔ PoE Trade Helper</h1>
+  <span class="muted">Path of Building → literal-stat trade search</span>
+  <span style="flex:1"></span>
+  <label class="muted">League</label>
+  <input id="league" list="leagueList" placeholder="League" autocomplete="off"
+    title="Pick from the list or type the exact league name">
+  <datalist id="leagueList"></datalist>
+</header>
+
+<div class="wrap">
+  <div class="row">
+    <input id="link" type="text" placeholder="Paste a maxroll.gg build guide, pobb.in / pastebin link, or raw PoB code…">
+    <button class="primary" id="loadBtn">Load build</button>
+  </div>
+  <div id="loadMsg" class="muted" style="margin-top:8px"></div>
+
+  <div id="tabs" class="tabs hide"></div>
+  <div id="slots" class="grid"></div>
+
+  <div id="detail" class="panel hide"></div>
+</div>
+
+<script>
+let BUILD=null, curSet=0, curSlot=null;
+
+async function api(path, body, timeoutMs){
+  const ctrl = new AbortController();
+  const t = setTimeout(()=>ctrl.abort(), timeoutMs||60000);
+  try{
+    const r = await fetch(path, {method:body?'POST':'GET',
+      headers:{'Content-Type':'application/json'},
+      body: body?JSON.stringify(body):undefined, signal:ctrl.signal});
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+
+async function initLeagues(){
+  const inp = document.getElementById('league');
+  try{
+    const d = await api('/api/leagues');
+    document.getElementById('leagueList').innerHTML =
+      (d.leagues||[]).map(l=>`<option value="${esc(l)}">`).join('');
+    if(!inp.value) inp.value = d.current || (d.leagues&&d.leagues[0]) || 'Standard';
+  }catch(e){ if(!inp.value) inp.value='Standard'; }
+}
+
+document.getElementById('loadBtn').onclick = load;
+document.getElementById('link').addEventListener('keydown',e=>{if(e.key==='Enter')load();});
+
+async function load(){
+  const link = document.getElementById('link').value.trim();
+  const msg = document.getElementById('loadMsg');
+  if(!link){msg.textContent='Paste a PoB link or code first.';return;}
+  document.getElementById('detail').classList.add('hide');
+  document.getElementById('tabs').classList.add('hide');
+  document.getElementById('slots').innerHTML='';
+  const t0=Date.now();
+  const tick=setInterval(()=>{
+    msg.innerHTML='<span class="spin">Loading build… '+Math.round((Date.now()-t0)/1000)+'s</span>';
+  },200);
+  let d;
+  try{
+    d = await api('/api/load',{link}, 90000);
+  }catch(e){
+    clearInterval(tick);
+    msg.innerHTML='<span class="err">Timed out or network error'+
+      (e&&e.name==='AbortError'?' (90s)':'')+'. maxroll/PoE may be slow — try again. '+
+      'Details in logs/errors.log.</span>';
+    return;
+  }
+  clearInterval(tick);
+  if(!d || d.error){msg.innerHTML='<span class="err">'+esc((d&&d.error)||'No response')+'</span>';return;}
+  BUILD=d; curSet=0; curSlot=null;
+  msg.innerHTML='<span class="ok">Loaded in '+((Date.now()-t0)/1000).toFixed(1)+'s.</span> '+
+    '<span class="muted">Click a tab, then a slot.</span>';
+  renderTabs(); renderSlots();
+}
+
+function renderTabs(){
+  const t=document.getElementById('tabs');
+  t.classList.remove('hide');
+  t.innerHTML = BUILD.item_sets.map((s,i)=>
+    `<div class="tab${i===curSet?' active':''}" onclick="pickSet(${i})">${esc(s.title)}</div>`).join('');
+}
+function pickSet(i){curSet=i;curSlot=null;renderTabs();renderSlots();
+  document.getElementById('detail').classList.add('hide');}
+
+function renderSlots(){
+  const g=document.getElementById('slots');
+  const slots=BUILD.item_sets[curSet].slots;
+  g.innerHTML = slots.map((s,i)=>
+    `<div class="slot r-${s.rarity}" onclick="pickSlot(${i})">
+       <div class="sn">${esc(s.slot)}</div>
+       <div class="in">${esc(s.name||s.base)}</div>
+       <div class="ib">${esc(s.base)}</div>
+     </div>`).join('');
+}
+
+function pickSlot(i){
+  curSlot=i;
+  const s=BUILD.item_sets[curSet].slots[i];
+  const d=document.getElementById('detail');
+  d.classList.remove('hide');
+  const uniq = s.rarity==='UNIQUE';
+  const rows = s.mods.map((m,idx)=>{
+    const tag = m.matched? '<span class="tag ok">stat ✓</span>'
+                         : '<span class="tag miss">no trade stat</span>';
+    // Prefill every min with the PoB value (low end of a range) so you don't
+    // have to type it — just raise it if you want a better roll. Clear = any.
+    const pre = (m.matched && m.value!==null && m.value!==undefined) ? m.value : '';
+    const minBox = m.matched
+      ? `<span class="minwrap">min <input type="number" step="any" class="mininput" value="${pre}" placeholder="any"></span>`
+      : '';
+    return `<label class="modline ${m.matched?'':'no'}">
+       <input type="checkbox" class="modcheck" data-line="${esc(m.line)}" ${m.matched?'checked':''} ${m.matched?'':'disabled'}>
+       <span class="mtxt">${esc(m.line)} ${tag}</span>
+       ${minBox}</label>`;
+  }).join('');
+  d.innerHTML = `
+    <div class="row" style="justify-content:space-between">
+      <div><div class="sn muted">${esc(s.slot)}</div>
+        <div class="in" style="font-size:17px;color:var(--gold2)">${esc(s.name||s.base)}</div>
+        <div class="ib muted">${esc(s.base)} · ${esc(s.rarity)}</div></div>
+      <button class="primary" onclick="doSearch()">🔍 Search PoE Trade</button>
+    </div>
+    <div style="margin:14px 0 4px" class="muted">Each <b>min</b> is pre-filled from the build — just hit search, or raise a value for a better roll (clear a box = any):</div>
+    <div>${rows||'<span class="muted">No mods.</span>'}</div>
+    ${uniq?'<label class="row" style="margin-top:10px"><input type="checkbox" id="useName" checked> match this unique by name</label>':''}
+    <div id="searchOut"></div>`;
+}
+
+async function doSearch(){
+  const s=BUILD.item_sets[curSet].slots[curSlot];
+  const mods=[];
+  for(const row of document.querySelectorAll('#detail .modline')){
+    const cb=row.querySelector('.modcheck');
+    if(!cb||!cb.checked) continue;
+    const mi=row.querySelector('.mininput');
+    let min=null;
+    if(mi && mi.value.trim()!==''){ const n=parseFloat(mi.value); if(!isNaN(n)) min=n; }
+    mods.push({line:cb.dataset.line, min});
+  }
+  const useName = !!(document.getElementById('useName')||{}).checked;
+  const out=document.getElementById('searchOut');
+  out.innerHTML='<div class="spin" style="margin-top:12px">Creating trade search…</div>';
+  const d=await api('/api/search',{
+    item:{base:s.base,name:s.name,rarity:s.rarity},
+    mods, league:document.getElementById('league').value, use_name:useName});
+  let h='<div style="margin-top:14px">';
+  if(d.url){
+    h+=`<div class="ok">✓ Search ready.</div>
+        <div style="margin-top:8px"><a href="${d.url}" target="_blank"><button class="primary">Open in PoE Trade ↗</button></a></div>`;
+    window.open(d.url,'_blank');
+  }else{
+    h+=`<div class="err">Couldn't auto-create the search: ${esc(d.error||'')}</div>
+        <div class="muted" style="margin-top:6px">Query JSON below — paste it into the trade site or add POESESSID to config.json.</div>`;
+  }
+  if(d.skipped&&d.skipped.length){
+    h+='<details><summary>'+d.skipped.length+' mod(s) had no trade stat (skipped)</summary><pre>'+esc(d.skipped.join('\n'))+'</pre></details>';
+  }
+  h+='<details><summary>Show query JSON</summary><pre>'+esc(JSON.stringify(d.query,null,2))+'</pre></details>';
+  h+='</div>';
+  out.innerHTML=h;
+}
+
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>(
+  {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+initLeagues();
+</script>
+</body>
+</html>
