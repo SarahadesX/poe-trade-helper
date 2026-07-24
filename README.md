@@ -4,6 +4,15 @@ Reads a Path of Building build and opens a **PoE Trade** search pre-filled with
 an item's **literal** mod values (max life 50 → `to maximum Life, min 50`) —
 not PoB's translated/weighted trade export.
 
+## Install & auto-updates
+Install **Python 3** and **Git**, then **clone** the repo (don't download the
+zip, or updates won't work):
+```
+git clone https://github.com/SarahadesX/poe-trade-helper.git
+```
+Double-click **`Run PoE Trade Helper.bat`**. Every launch runs `git pull` first,
+so you always get the newest version automatically.
+
 ## Use
 1. Double-click **`Run PoE Trade Helper.bat`** (or `python app.py`).
    Opens http://localhost:8770 in your browser.
