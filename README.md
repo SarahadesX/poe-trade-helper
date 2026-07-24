@@ -43,8 +43,8 @@ remove it. The list is stored in `saved_builds.txt`.
 After loading, three tabs appear and stay collapsed until you pick one:
 - **🛡 Gear** — the item-set stages + click-a-slot trade search (above), plus a
   **Tree Jewels** section (jewels socketed in the active passive tree —
-  regular, cluster, unique and timeless). Each search also has **Max price**
-  (+ currency), **Corrupted** (any/yes/no) and **Min links** filters.
+  regular, cluster, unique and timeless). Clicking **Search PoE Trade** just
+  opens the trade site with the item's min stat values filled in — simple.
   **🔍 Search whole set** builds a search for every item in the stage at once
   (throttled to respect trade rate limits), fetches the **cheapest price** for
   each, and shows a **rough total cost** (e.g. "≈ 12.5 Divine") plus a

@@ -597,19 +597,6 @@ function showDetail(){
     <div style="margin:14px 0 4px" class="muted">Each <b>min</b> is pre-filled from the build — just hit search, or raise a value for a better roll (clear a box = any):</div>
     <div>${rows||'<span class="muted">No mods.</span>'}</div>
     ${uniq?'<label class="row" style="margin-top:10px"><input type="checkbox" id="useName" checked> match this unique by name</label>':''}
-    <div class="opts">
-      <span class="opt">Max price <input type="number" step="any" class="optin" id="optPrice" value="${BUDGET}" placeholder="any" style="width:66px">
-        <select class="optin" id="optCur">
-          <option value="chaos"${CURRENCY==='chaos'?' selected':''}>chaos</option>
-          <option value="divine"${CURRENCY==='divine'?' selected':''}>div</option>
-          <option value="exalted"${CURRENCY==='exalted'?' selected':''}>exalt</option>
-        </select></span>
-      <span class="opt">Corrupted
-        <select class="optin" id="optCorr">
-          <option value="">any</option><option value="true">yes</option><option value="false">no</option>
-        </select></span>
-      <span class="opt">Min links <input type="number" class="optin" id="optLinks" placeholder="any" style="width:52px"></span>
-    </div>
     <div id="searchOut"></div>`;
 }
 
@@ -625,17 +612,11 @@ async function doSearch(){
     mods.push({line:cb.dataset.line, min});
   }
   const useName = !!(document.getElementById('useName')||{}).checked;
-  // Budget / corrupted / links (budget currency is remembered).
-  BUDGET=(document.getElementById('optPrice')||{}).value||'';
-  CURRENCY=(document.getElementById('optCur')||{}).value||'divine';
-  const opts={ max_price:BUDGET, currency:CURRENCY,
-    corrupted:(document.getElementById('optCorr')||{}).value||'',
-    min_links:(document.getElementById('optLinks')||{}).value||'' };
   const out=document.getElementById('searchOut');
   out.innerHTML='<div class="spin" style="margin-top:12px">Creating trade search…</div>';
   const d=await api('/api/search',{
     item:{base:s.base,name:s.name,rarity:s.rarity},
-    mods, opts, league:document.getElementById('league').value, use_name:useName});
+    mods, league:document.getElementById('league').value, use_name:useName});
   let h='<div style="margin-top:14px">';
   if(d.url){
     h+=`<div class="ok">✓ Search ready.</div>`;
