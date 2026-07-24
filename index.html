@@ -77,6 +77,20 @@
   .tbig{color:var(--gold2);font-size:26px;font-weight:700;margin:4px 0}
   .tsub{color:var(--muted);font-size:14px;font-weight:400}
   .tnote{color:var(--muted);font-size:12px;margin-top:3px}
+  .advtoggle{display:inline-flex;align-items:center;gap:6px;color:var(--muted);
+    font-size:13px;cursor:pointer}
+  .cmp-you{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    padding:9px 12px;color:var(--text);font-size:13px}
+  .cmpcard{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:9px 12px;margin-top:8px}
+  .cmphead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}
+  .cmpprice{font-weight:700;color:var(--gold2)}
+  .cmp-prop{color:var(--muted);font-size:12px}
+  .cmpstats{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px}
+  .cmp-up{color:var(--good)}
+  .cmp-dn{color:var(--bad)}
+  .cmp-miss{color:var(--muted)}
+  .cmpyou{color:var(--muted);font-size:11px}
   #myGearBtn{padding:8px 14px}
   #myGearBtn.active{background:var(--gold);color:#1a140a;border-color:var(--gold)}
   .howto{background:#1a2230;border:1px solid #33445c;border-radius:8px;
@@ -169,6 +183,7 @@
   <input id="league" list="leagueList" placeholder="League" autocomplete="off"
     title="Pick from the list or type the exact league name">
   <datalist id="leagueList"></datalist>
+  <label class="advtoggle" title="Show live listings and compare them to your item, inside this app"><input type="checkbox" id="advChk" onchange="setAdv(this.checked)"> Advanced</label>
   <button id="myGearBtn" onclick="toggleMyGear()">👤 My Gear</button>
 </header>
 
@@ -603,8 +618,10 @@ function showDetail(){
     <div id="searchOut"></div>`;
 }
 
-async function doSearch(){
-  const s=curItem;
+// ---- Advanced mode (show + compare live listings inside the app) -----------
+let ADV=false;
+function setAdv(on){ ADV=on; try{localStorage.setItem('poe_adv',on?'1':'');}catch(e){} }
+function gatherDetailMods(){
   const mods=[];
   for(const row of document.querySelectorAll('#detail .modline')){
     const cb=row.querySelector('.modcheck');
@@ -614,12 +631,23 @@ async function doSearch(){
     if(mi && mi.value.trim()!==''){ const n=parseFloat(mi.value); if(!isNaN(n)) min=n; }
     mods.push({line:cb.dataset.line, min});
   }
+  return mods;
+}
+async function doSearch(){
+  const s=curItem;
+  const mods=gatherDetailMods();
   const useName = !!(document.getElementById('useName')||{}).checked;
+  const league=document.getElementById('league').value;
+  const payload={item:{base:s.base,name:s.name,rarity:s.rarity},mods,league,use_name:useName};
   const out=document.getElementById('searchOut');
+  if(ADV){
+    out.innerHTML='<div class="spin" style="margin-top:12px">Searching trade & loading items to compare…</div>';
+    let d; try{ d=await api('/api/searchitems',payload,45000); }catch(e){ d={error:'Search timed out — try again.'}; }
+    renderCompare(d,s);
+    return;
+  }
   out.innerHTML='<div class="spin" style="margin-top:12px">Creating trade search…</div>';
-  const d=await api('/api/search',{
-    item:{base:s.base,name:s.name,rarity:s.rarity},
-    mods, league:document.getElementById('league').value, use_name:useName});
+  const d=await api('/api/search',payload);
   let h='<div style="margin-top:14px">';
   if(d.url){
     h+=`<div class="ok">✓ Search ready.</div>`;
@@ -627,15 +655,56 @@ async function doSearch(){
     h+=`<div style="margin-top:8px"><a href="${d.url}" target="_blank"><button class="primary">Open in PoE Trade ↗</button></a></div>`;
     window.open(d.url,'_blank');
   }else{
-    h+=`<div class="err">Couldn't auto-create the search: ${esc(d.error||'')}</div>
-        <div class="muted" style="margin-top:6px">Query JSON below — paste it into the trade site or add POESESSID to config.json.</div>`;
+    h+=`<div class="err">Couldn't auto-create the search: ${esc(d.error||'')}</div>`;
   }
   if(d.skipped&&d.skipped.length){
     h+='<details><summary>'+d.skipped.length+' mod(s) had no trade stat (skipped)</summary><pre>'+esc(d.skipped.join('\n'))+'</pre></details>';
   }
-  h+='<details><summary>Show query JSON</summary><pre>'+esc(JSON.stringify(d.query,null,2))+'</pre></details>';
   h+='</div>';
   out.innerHTML=h;
+}
+function niceStat(t){ return String(t||'').replace(/^[+-]?\(?\d[\d.,\-–]*\)?%?\s*/,'').replace(/^to /,'').trim(); }
+function statNum(v){ return (v%1===0)?v:Math.round(v*10)/10; }
+function statAgg(mods){  // sum values per stat id
+  const a={};
+  for(const m of (mods||[])){
+    const id=m.id, v=m.value, text=m.text||m.line;
+    if(!id || v===null || v===undefined) continue;
+    if(!a[id]) a[id]={value:0,text:text};
+    a[id].value+=v;
+  }
+  return a;
+}
+function renderCompare(d, myItem){
+  const out=document.getElementById('searchOut');
+  let h='<div style="margin-top:14px">';
+  if(!d || d.error){ out.innerHTML=h+'<div class="err">'+esc((d&&d.error)||'Search failed.')+'</div></div>'; return; }
+  h+='<div style="margin-bottom:8px"><a href="'+esc(d.url||'#')+'" target="_blank"><button class="primary">Open full search in PoE Trade ↗</button></a>'+
+     (d.note?' <span class="muted">('+esc(d.note)+')</span>':'')+'</div>';
+  if(!d.items||!d.items.length){ out.innerHTML=h+'<div class="muted">No live listings found right now.</div></div>'; return; }
+  const myAgg=statAgg((myItem.mods||[]).map(m=>({id:m.id,value:m.value,text:m.line})));
+  const myIds=Object.keys(myAgg);
+  h+='<div class="cmp-you"><b>Your '+esc(myItem.base)+':</b> '+
+     (myIds.length? myIds.map(id=>esc(niceStat(myAgg[id].text))+' <b>'+statNum(myAgg[id].value)+'</b>').join(' &middot; ')
+                  : 'no comparable stats')+'</div>';
+  h+='<div class="muted" style="margin:8px 0 6px">Cheapest matches — <span class="cmp-up">green = same or better</span> than yours, <span class="cmp-dn">red = worse</span>:</div>';
+  for(const it of d.items){
+    const fa=statAgg(it.mods);
+    let ups=0;
+    const statsHtml=myIds.map(id=>{
+      const yv=myAgg[id].value, fv=(fa[id]?fa[id].value:null);
+      if(fv===null) return '<span class="cmp-miss">– '+esc(niceStat(myAgg[id].text))+' —</span>';
+      const up=fv>=yv; if(up) ups++;
+      return '<span class="'+(up?'cmp-up':'cmp-dn')+'">'+(up?'✓':'✗')+' '+esc(niceStat(myAgg[id].text))+' <b>'+statNum(fv)+'</b> <span class="cmpyou">(you '+statNum(yv)+')</span></span>';
+    }).join('');
+    const weap=(it.props&&it.props['Physical Damage'])?
+      ('<span class="cmp-prop">Phys '+esc(it.props['Physical Damage'])+(it.props['Attacks per Second']?' &middot; '+esc(it.props['Attacks per Second'])+'aps':'')+'</span>'):'';
+    const verdict = myIds.length? (ups===myIds.length?'<span class="cmp-up">upgrade ✓</span>':'<span class="muted">'+ups+'/'+myIds.length+' better</span>') : '';
+    h+='<div class="cmpcard"><div class="cmphead"><span class="cmpprice">'+fmtPrice(it.price)+'</span>'+
+       (it.corrupted?' <span class="over-lbl">corrupted</span>':'')+' '+weap+'<span style="flex:1"></span>'+verdict+'</div>'+
+       '<div class="cmpstats">'+(statsHtml||'<span class="muted">no comparable stats</span>')+'</div></div>';
+  }
+  out.innerHTML=h+'</div>';
 }
 
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>(
@@ -644,6 +713,7 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>(
 initLeagues();
 loadSaved();
 try{ if(!localStorage.getItem('poe_howto_done')) document.getElementById('howto').classList.remove('hide'); }catch(e){}
+try{ if(localStorage.getItem('poe_adv')){ ADV=true; document.getElementById('advChk').checked=true; } }catch(e){}
 
 // Keep-alive: while this tab is open, an SSE connection stays open to the
 // server. Closing the tab drops it and the server shuts itself down. A reload

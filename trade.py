@@ -267,6 +267,64 @@ def get_divine_rate(league):
     return rate
 
 
+def fetch_results(query, league, poesessid="", limit=8):
+    """Create a search and return the top listings' full details (price, mods,
+    weapon/defence properties) for in-app comparison. Falls back to 'any'
+    status if nothing is online (e.g. during a league launch)."""
+    data, err = _post_search(query, league, poesessid)
+    note = None
+    if not err and data and not data.get("result"):
+        q2 = copy.deepcopy(query)
+        q2["query"]["status"] = {"option": "any"}
+        d2, e2 = _post_search(q2, league, poesessid)
+        if not e2 and d2 and d2.get("result"):
+            data, note = d2, "includes offline sellers"
+    if err or not data:
+        return {"url": None, "error": err, "items": [], "count": 0, "note": None}
+    sid = data.get("id")
+    hashes = (data.get("result") or [])[:limit]
+    out = {"url": _search_url(league, sid), "error": None, "items": [],
+           "count": data.get("total", len(hashes)), "note": note}
+    if not hashes:
+        return out
+    try:
+        u = ("https://www.pathofexile.com/api/trade/fetch/" + ",".join(hashes)
+             + "?query=" + sid)
+        headers = {"User-Agent": UA, "Accept": "application/json"}
+        if poesessid:
+            headers["Cookie"] = f"POESESSID={poesessid}"
+        with urllib.request.urlopen(
+                urllib.request.Request(u, headers=headers), timeout=25) as r:
+            fd = json.loads(r.read().decode("utf-8"))
+    except Exception:
+        return out
+    for it in (fd.get("result") or []):
+        item = it.get("item") or {}
+        price = (it.get("listing") or {}).get("price") or {}
+        mods = []
+        for m in ((item.get("implicitMods") or []) + (item.get("explicitMods")
+                  or []) + (item.get("craftedMods") or [])):
+            txt = m.get("description") if isinstance(m, dict) else m
+            if txt:
+                mods.append(txt)
+        props = {}
+        for p in (item.get("properties") or []):
+            vals = p.get("values") or []
+            if vals and vals[0]:
+                props[p.get("name", "")] = vals[0][0]
+        out["items"].append({
+            "price": ({"amount": price.get("amount"),
+                       "currency": price.get("currency")}
+                      if price.get("amount") is not None else None),
+            "name": item.get("name") or "",
+            "base": item.get("typeLine") or "",
+            "corrupted": bool(item.get("corrupted")),
+            "props": props,
+            "mods": mods,
+        })
+    return out
+
+
 def search_and_price(query, league, poesessid=""):
     """Create a search (name/type fallback) AND fetch the cheapest price.
     Returns {url, error, note, price, count}."""

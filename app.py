@@ -222,6 +222,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_search(payload)
         elif self.path == "/api/searchset":
             self._handle_searchset(payload)
+        elif self.path == "/api/searchitems":
+            self._handle_searchitems(payload)
         elif self.path == "/api/mygear":
             self._handle_mygear(payload)
         elif self.path == "/api/builds/save":
@@ -316,6 +318,35 @@ class Handler(BaseHTTPRequestHandler):
             "matched": disp,
             "skipped": skipped,
         })
+
+    def _handle_searchitems(self, payload):
+        """Advanced mode: return the top live listings with their mods enriched
+        so the UI can compare them to the item you already have."""
+        item = payload.get("item") or {}
+        league = (payload.get("league") or _load_config()["league"]).strip()
+        use_name = bool(payload.get("use_name"))
+        idx = stats.get_index()
+        specs = []
+        for entry in (payload.get("mods") or []):
+            line = entry.get("line", "") if isinstance(entry, dict) else entry
+            minv = entry.get("min") if isinstance(entry, dict) else None
+            m = idx.match(line)
+            if m:
+                specs.append({"id": m["id"], "min": minv})
+        query = trade.build_query(item, specs, use_type=True, use_name=use_name)
+        res = trade.fetch_results(query, league,
+                                  _load_config().get("poesessid", ""))
+        for it in res.get("items", []):
+            enriched = []
+            for line in it["mods"]:
+                m = idx.match(line)
+                enriched.append({"text": line, "id": (m["id"] if m else None),
+                                 "value": (m["value"] if m else None)})
+            it["mods"] = enriched
+        log.info("SEARCHITEMS: %s -> %d listings%s", item.get("base"),
+                 len(res.get("items", [])), f" ({res.get('note')})"
+                 if res.get("note") else "")
+        self._json(200, res)
 
     def _handle_searchset(self, payload):
         """One throttled trade search per item; fetch each cheapest price,

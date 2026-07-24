@@ -60,6 +60,14 @@ After loading, three tabs appear and stay collapsed until you pick one:
 - **📖 Guide** — the build author's own notes (leveling order, how to play),
   if the build has any.
 
+### Advanced mode (compare listings in-app)
+Tick **Advanced** in the header. Now when you click **Search PoE Trade** on an
+item, instead of only opening the trade site, the cheapest matching listings are
+pulled **into the app** and compared to your item stat-by-stat — **green** =
+that listing is the same or better than yours, **red** = worse — with the price
+and (for weapons) the damage shown. Great for spotting a cheap upgrade at a
+glance. (Untick Advanced to go back to just opening the trade tab.)
+
 ### My Gear (see your own character, no login needed)
 Click **👤 My Gear** in the header to load your own character's equipped items
 and search an upgrade for each piece. The panel walks you through it with links:
