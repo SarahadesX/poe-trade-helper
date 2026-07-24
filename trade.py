@@ -147,12 +147,8 @@ def build_query(item, specs, use_type=True, use_name=False, opts=None):
     return query
 
 
-def create_search(query, league, poesessid=""):
-    """POST the query; return (url, error).
-
-    On success url is the human trade page. On Cloudflare/login block,
-    url is None and error explains the fallback.
-    """
+def _post_search(query, league, poesessid=""):
+    """POST a search; return (data, error). data has id/result/total."""
     url = f"https://www.pathofexile.com/api/trade/search/{urllib.parse.quote(league)}"
     body = json.dumps(query).encode("utf-8")
     headers = {
@@ -167,12 +163,7 @@ def create_search(query, league, poesessid=""):
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=25) as r:
-            data = json.loads(r.read().decode("utf-8"))
-        sid = data.get("id")
-        if not sid:
-            return None, "Trade API returned no search id."
-        page = f"https://www.pathofexile.com/trade/search/{urllib.parse.quote(league)}/{sid}"
-        return page, None
+            return json.loads(r.read().decode("utf-8")), None
     except urllib.error.HTTPError as e:
         detail = ""
         try:
@@ -185,6 +176,69 @@ def create_search(query, league, poesessid=""):
         return None, f"HTTP {e.code}: {detail}"
     except Exception as e:
         return None, f"Request failed: {e}"
+
+
+def _search_url(league, sid):
+    return (f"https://www.pathofexile.com/trade/search/"
+            f"{urllib.parse.quote(league)}/{sid}")
+
+
+def create_search(query, league, poesessid=""):
+    """POST the query; return (url, error) for the human trade page."""
+    data, err = _post_search(query, league, poesessid)
+    if err:
+        return None, err
+    sid = data.get("id")
+    if not sid:
+        return None, "Trade API returned no search id."
+    return _search_url(league, sid), None
+
+
+def _fetch_price(item_hash, sid, league, poesessid=""):
+    """Return the cheapest listing's {amount, currency} (or None)."""
+    u = (f"https://www.pathofexile.com/api/trade/fetch/{item_hash}"
+         f"?query={sid}")
+    headers = {"User-Agent": UA, "Accept": "application/json"}
+    if poesessid:
+        headers["Cookie"] = f"POESESSID={poesessid}"
+    try:
+        with urllib.request.urlopen(
+                urllib.request.Request(u, headers=headers), timeout=20) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        res = data.get("result") or []
+        price = ((res[0].get("listing") or {}).get("price") or {}) if res else {}
+        amt, cur = price.get("amount"), price.get("currency")
+        return {"amount": float(amt), "currency": cur} if amt and cur else None
+    except Exception:
+        return None
+
+
+def search_and_price(query, league, poesessid=""):
+    """Create a search (name/type fallback) AND fetch the cheapest price.
+    Returns {url, error, note, price, count}."""
+    data, err = _post_search(query, league, poesessid)
+    note, q = None, query
+    if err and "Unknown item name" in err and q["query"].get("name"):
+        q = copy.deepcopy(q)
+        q["query"].pop("name", None)
+        data, err = _post_search(q, league, poesessid)
+        if not err:
+            note = "matched by base type + stats (name not recognised)"
+    if err and "Unknown item" in err and q["query"].get("type"):
+        q = copy.deepcopy(q)
+        q["query"].pop("name", None)
+        q["query"].pop("type", None)
+        data, err = _post_search(q, league, poesessid)
+        if not err:
+            note = "matched by stats only (base not recognised)"
+    if err or not data:
+        return {"url": None, "error": err, "note": note, "price": None,
+                "count": 0}
+    sid = data.get("id")
+    result = data.get("result") or []
+    price = _fetch_price(result[0], sid, league, poesessid) if result else None
+    return {"url": _search_url(league, sid), "error": None, "note": note,
+            "price": price, "count": data.get("total", len(result))}
 
 
 def create_search_smart(query, league, poesessid=""):

@@ -46,8 +46,10 @@ After loading, three tabs appear and stay collapsed until you pick one:
   regular, cluster, unique and timeless). Each search also has **Max price**
   (+ currency), **Corrupted** (any/yes/no) and **Min links** filters.
   **🔍 Search whole set** builds a search for every item in the stage at once
-  (throttled to respect trade rate limits) and lists an **Open ↗** link per
-  slot, plus **Open all**. Toggle whether tree jewels / flasks are included.
+  (throttled to respect trade rate limits), fetches the **cheapest price** for
+  each, and shows a **rough total cost** ("≈ 40 Chaos + 2 Divine") plus a
+  **Buy ↗** link per item and **Open all**. Toggle tree jewels / flasks.
+  Prices are a live guide only — click Buy for the real listings.
 - **🌳 Skill Tree** — every passive tree the build saved (usually one per
   level/stage), each with a **View tree ↗** link that opens the full
   interactive tree on pathofexile.com.

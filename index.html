@@ -58,13 +58,22 @@
   .setopt{display:inline-flex;align-items:center;gap:6px;color:var(--muted);
     font-size:13px}
   button.mini{padding:5px 12px;font-size:12px}
-  .setrow{display:grid;grid-template-columns:150px 1fr auto;gap:12px;
+  .setrow{display:grid;grid-template-columns:140px 1fr 110px auto;gap:12px;
     align-items:center;padding:7px 4px;border-bottom:1px solid var(--line)}
   .setrow:last-child{border-bottom:none}
   .sr-slot{color:var(--muted);font-size:12px;text-transform:uppercase;
     letter-spacing:.4px}
   .sr-name{color:var(--gold2);overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap}
+  .sr-price{text-align:right;color:var(--text);font-variant-numeric:tabular-nums}
+  .sr-price b{color:var(--gold2)}
+  .totalbox{background:#20180d;border:1px solid var(--gold);border-radius:10px;
+    padding:14px 18px;text-align:center}
+  .tlabel{color:var(--muted);font-size:13px;text-transform:uppercase;
+    letter-spacing:.5px}
+  .tbig{color:var(--gold2);font-size:26px;font-weight:700;margin:4px 0}
+  .tsub{color:var(--muted);font-size:14px;font-weight:400}
+  .tnote{color:var(--muted);font-size:12px;margin-top:3px}
   .jewelhead{margin:16px 0 6px;color:var(--gold);font-size:12px;
     text-transform:uppercase;letter-spacing:.5px}
   .opts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:12px 0 2px;
@@ -377,26 +386,49 @@ async function doSearchSet(){
   if(!items.length){ el.innerHTML='<div class="panel muted">Nothing to search.</div>'; return; }
   BUDGET=(document.getElementById('setPrice')||{}).value||'';
   CURRENCY=(document.getElementById('setCur')||{}).value||'divine';
-  el.innerHTML='<div class="panel"><span class="spin">Building '+items.length+
-    ' searches… (~'+Math.ceil(items.length*0.9)+'s, throttled to avoid rate limits)</span></div>';
+  const t0=Date.now(), est=Math.ceil(items.length*1.2);
+  const tick=setInterval(()=>{
+    el.innerHTML='<div class="panel"><span class="spin">Finding each item and checking prices… '+
+      Math.round((Date.now()-t0)/1000)+'s of about '+est+'s. Please wait.</span></div>';
+  },300);
   let d;
   try{ d=await api('/api/searchset',{items,opts:{max_price:BUDGET,currency:CURRENCY},
-        league:document.getElementById('league').value}, 180000); }
-  catch(e){ el.innerHTML='<div class="panel err">Timed out — try again.</div>'; return; }
-  renderSetResults((d&&d.results)||[]);
+        league:document.getElementById('league').value}, 240000); }
+  catch(e){ clearInterval(tick); el.innerHTML='<div class="panel err">Timed out — try again.</div>'; return; }
+  clearInterval(tick);
+  renderSetResults((d&&d.results)||[], d||{});
 }
-function renderSetResults(res){
+function fmtPrice(p){
+  if(!p) return '<span class="muted">no price</span>';
+  const c=p.currency.charAt(0).toUpperCase()+p.currency.slice(1);
+  const a=(p.amount%1===0)?p.amount:p.amount.toFixed(1);
+  return '<b>'+a+'</b> '+c;
+}
+function totalText(totals){
+  const order={divine:0,exalted:1,chaos:2};
+  const keys=Object.keys(totals||{}).sort((a,b)=>((order[a]??9)-(order[b]??9)));
+  if(!keys.length) return 'No prices found';
+  return keys.map(c=>{const v=totals[c]; const amt=(v%1===0)?v:v.toFixed(1);
+    return '<b>'+amt+'</b> '+c.charAt(0).toUpperCase()+c.slice(1);}).join('  +  ');
+}
+function renderSetResults(res, meta){
   SET_URLS=res.filter(r=>r.url).map(r=>r.url);
   const rows=res.map(r=>`<div class="setrow">
     <span class="sr-slot">${esc(r.slot)}</span>
     <span class="sr-name">${esc(r.name)}</span>
-    ${r.url?`<a href="${esc(r.url)}" target="_blank"><button class="mini">Open ↗</button></a>`
-           :`<span class="err" title="${esc(r.error||'')}">failed</span>`}
+    <span class="sr-price">${fmtPrice(r.price)}</span>
+    ${r.url?`<a href="${esc(r.url)}" target="_blank"><button class="mini">Buy ↗</button></a>`
+           :`<span class="err" title="${esc(r.error||'')}">not found</span>`}
   </div>`).join('');
+  const t=totalText(meta&&meta.totals);
   document.getElementById('setResults').innerHTML='<div class="panel">'+
-    '<div class="row" style="justify-content:space-between;margin-bottom:6px">'+
-    '<span class="muted">'+SET_URLS.length+' of '+res.length+' searches ready</span>'+
-    (SET_URLS.length?'<button class="primary" onclick="openAllSet()">Open all ↗</button>':'')+
+    '<div class="totalbox"><div class="tlabel">Rough cost to buy this gear now</div>'+
+      '<div class="tbig">≈ '+t+'</div>'+
+      '<div class="tnote">Prices change all the time — this is only a guide. Click <b>Buy</b> to see live listings.</div>'+
+    '</div>'+
+    '<div class="row" style="justify-content:space-between;margin:10px 0 6px">'+
+      '<span class="muted">'+SET_URLS.length+' of '+res.length+' found</span>'+
+      (SET_URLS.length?'<button class="primary" onclick="openAllSet()">Open all ↗</button>':'')+
     '</div>'+rows+'</div>';
 }
 function openAllSet(){ SET_URLS.forEach((u,i)=>setTimeout(()=>window.open(u,'_blank'), i*250)); }

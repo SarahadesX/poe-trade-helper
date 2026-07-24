@@ -303,7 +303,7 @@ class Handler(BaseHTTPRequestHandler):
         idx = stats.get_index()
         sess = _load_config().get("poesessid", "")
         log.info("SEARCHSET: %d items, league=%s", len(items), league)
-        results = []
+        results, totals = [], {}
         for n, it in enumerate(items):
             itm = it.get("item") or {}
             specs = []
@@ -315,18 +315,23 @@ class Handler(BaseHTTPRequestHandler):
                     specs.append({"id": m["id"], "min": minv})
             query = trade.build_query(itm, specs, use_type=True,
                                       use_name=bool(it.get("use_name")), opts=opts)
-            url, err, note = trade.create_search_smart(query, league, sess)
-            if err and ("429" in err or "Cloudflare" in err):
+            res = trade.search_and_price(query, league, sess)
+            if res["error"] and ("429" in res["error"] or "Cloudflare" in res["error"]):
                 time.sleep(3.0)  # rate-limited: back off and retry once
-                url, err, note = trade.create_search_smart(query, league, sess)
+                res = trade.search_and_price(query, league, sess)
+            price = res.get("price")
+            if price:
+                totals[price["currency"]] = round(
+                    totals.get(price["currency"], 0) + price["amount"], 1)
             results.append({"slot": it.get("slot", ""),
                             "name": itm.get("name") or itm.get("base", ""),
-                            "url": url, "error": err, "note": note})
+                            "url": res["url"], "error": res["error"],
+                            "price": price, "count": res.get("count", 0)})
             if n < len(items) - 1:
-                time.sleep(0.7)  # throttle between creates
+                time.sleep(0.6)  # throttle
         ok = sum(1 for r in results if r["url"])
-        log.info("SEARCHSET done: %d/%d ok", ok, len(results))
-        self._json(200, {"results": results})
+        log.info("SEARCHSET done: %d/%d ok, totals=%s", ok, len(results), totals)
+        self._json(200, {"results": results, "totals": totals})
 
 
 def _prewarm():
