@@ -208,7 +208,56 @@ def parse_build(link_or_code: str) -> dict:
     if not sets:
         raise ValueError("No equipped items found in this build.")
 
-    return {"item_sets": sets, "trees": _parse_trees(root)}
+    return {"item_sets": sets, "trees": _parse_trees(root),
+            "skills": _parse_skills(root)}
+
+
+def _parse_skills(root):
+    """Gem setups. <SkillSet>s (often per stage) -> <Skill> socket groups ->
+    <Gem>s. gemId containing 'SupportGem' marks a support gem."""
+    node = root.find("Skills")
+    if node is None:
+        return []
+    active = str(node.get("activeSkillSet", ""))
+    set_els = node.findall("SkillSet") or [node]
+    out = []
+    for i, ss in enumerate(set_els, 1):
+        groups = []
+        for sk in ss.findall("Skill"):
+            grp_on = sk.get("enabled", "true") != "false"
+            gems = []
+            for g in sk.findall("Gem"):
+                gid = g.get("gemId", "")
+                skid = g.get("skillId", "")
+                if not (g.get("nameSpec") or skid):
+                    continue
+                try:
+                    lvl = int(g.get("level", "0"))
+                except ValueError:
+                    lvl = 0
+                try:
+                    qual = int(g.get("quality", "0"))
+                except ValueError:
+                    qual = 0
+                gems.append({
+                    "name": g.get("nameSpec") or skid,
+                    "level": lvl,
+                    "quality": qual,
+                    "support": "SupportGem" in gid or skid.startswith("Support"),
+                    "enabled": grp_on and g.get("enabled", "true") != "false",
+                })
+            if gems:
+                groups.append({"gems": gems})
+        if groups:
+            sid = ss.get("id")
+            # PoB's activeSkillSet is the SkillSet *id* (unlike trees, which use
+            # the spec index). Matching by index too caused a false 2nd active.
+            out.append({
+                "title": ss.get("title") or f"Gem Set {i}",
+                "active": sid is not None and str(sid) == active,
+                "groups": groups,
+            })
+    return out
 
 
 # Passive-tree class ids -> name (ascendancy names vary per class, skipped).

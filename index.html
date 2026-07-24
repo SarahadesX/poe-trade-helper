@@ -45,6 +45,15 @@
   .treerow .tt{font-weight:600;color:var(--text)}
   .treerow.active .tt{color:var(--gold2)}
   .treerow .ts{font-size:12px;margin-top:2px}
+  .gemgroups{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+    gap:10px;margin-top:12px}
+  .gemgroup{background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:10px 12px}
+  .gem{padding:2px 0;color:var(--gold2);font-weight:600}
+  .gem.support{color:var(--text);font-weight:400;padding-left:14px;font-size:13px}
+  .gem.off{opacity:.4;text-decoration:line-through}
+  .gbadge{font-size:10px;color:var(--muted);margin-left:5px;
+    font-variant-numeric:tabular-nums}
   .saved{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
   .saved:empty{margin:0}
   .bchip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);
@@ -125,6 +134,7 @@
   </div>
 
   <div id="treePanel" class="hide"></div>
+  <div id="gemPanel" class="hide"></div>
 </div>
 
 <script>
@@ -158,7 +168,7 @@ async function load(){
   const link = document.getElementById('link').value.trim();
   const msg = document.getElementById('loadMsg');
   if(!link){msg.textContent='Paste a PoB link or code first.';return;}
-  ['modeTabs','gearPanel','treePanel','detail'].forEach(id=>
+  ['modeTabs','gearPanel','treePanel','gemPanel','detail'].forEach(id=>
     document.getElementById(id).classList.add('hide'));
   document.getElementById('slots').innerHTML='';
   const t0=Date.now();
@@ -177,30 +187,57 @@ async function load(){
   }
   clearInterval(tick);
   if(!d || d.error){msg.innerHTML='<span class="err">'+esc((d&&d.error)||'No response')+'</span>';return;}
-  BUILD=d; curSet=0; curSlot=null; MODE=null;
+  BUILD=d; curSet=0; curSlot=null; MODE=null; curGemSet=null;
   msg.innerHTML='<span class="ok">Loaded in '+((Date.now()-t0)/1000).toFixed(1)+'s.</span> '+
-    '<span class="muted">Choose Gear or Skill Tree below.</span>';
+    '<span class="muted">Choose Gear, Skill Tree or Gems below.</span>';
   renderTabs(); renderSlots();
   showModeTabs(); renderMode();
   saveBuild(link);          // remember this build in the saved list
 }
 
 // ---- Top-level Gear / Skill Tree tabs (content hidden until you pick one) ---
-let MODE=null;   // null | 'gear' | 'tree'
+let MODE=null;   // null | 'gear' | 'tree' | 'gems'
+let curGemSet=null;
 function showModeTabs(){
   const mt=document.getElementById('modeTabs');
   if(!BUILD){ mt.classList.add('hide'); mt.innerHTML=''; return; }
   mt.classList.remove('hide');
-  const nT=(BUILD.trees||[]).length;
+  const nT=(BUILD.trees||[]).length, nG=(BUILD.skills||[]).length;
   mt.innerHTML=
     `<div class="modetab${MODE==='gear'?' active':''}" onclick="setMode('gear')">🛡 Gear</div>`+
-    `<div class="modetab${MODE==='tree'?' active':''}" onclick="setMode('tree')">🌳 Skill Tree${nT?' ('+nT+')':''}</div>`;
+    `<div class="modetab${MODE==='tree'?' active':''}" onclick="setMode('tree')">🌳 Skill Tree${nT?' ('+nT+')':''}</div>`+
+    `<div class="modetab${MODE==='gems'?' active':''}" onclick="setMode('gems')">🔮 Gems${nG?' ('+nG+')':''}</div>`;
 }
 function setMode(m){ MODE = (MODE===m ? null : m); showModeTabs(); renderMode(); }
 function renderMode(){
   document.getElementById('gearPanel').classList.toggle('hide', MODE!=='gear');
   document.getElementById('treePanel').classList.toggle('hide', MODE!=='tree');
+  document.getElementById('gemPanel').classList.toggle('hide', MODE!=='gems');
   if(MODE==='tree') renderTrees();
+  if(MODE==='gems') renderGems();
+}
+function pickGemSet(i){ curGemSet=i; renderGems(); }
+function renderGems(){
+  const el=document.getElementById('gemPanel');
+  const sets=(BUILD&&BUILD.skills)||[];
+  if(!sets.length){ el.innerHTML='<div class="panel muted">This build has no skill gems.</div>'; return; }
+  if(curGemSet===null){ const a=sets.findIndex(s=>s.active); curGemSet=a<0?0:a; }
+  if(curGemSet>=sets.length) curGemSet=0;
+  const setTabs = sets.length>1
+    ? '<div class="tabs">'+sets.map((s,i)=>`<div class="tab${i===curGemSet?' active':''}" onclick="pickGemSet(${i})">${esc(s.title)}${s.active?' ★':''}</div>`).join('')+'</div>'
+    : '';
+  const groups = sets[curGemSet].groups.map(g=>{
+    const gems=g.gems.map(gm=>{
+      const badge=(gm.level?` <span class="gbadge">L${gm.level}</span>`:'')+
+                  (gm.quality?` <span class="gbadge">Q${gm.quality}</span>`:'');
+      const cls='gem'+(gm.support?' support':'')+(gm.enabled?'':' off');
+      return `<div class="${cls}">${esc(gm.name)}${badge}</div>`;
+    }).join('');
+    return `<div class="gemgroup">${gems}</div>`;
+  }).join('');
+  el.innerHTML='<div class="panel">'+setTabs+
+    '<div class="muted" style="margin:2px 0 2px">Active skills in gold, support gems below each:</div>'+
+    '<div class="gemgroups">'+groups+'</div></div>';
 }
 function renderTrees(){
   const el=document.getElementById('treePanel');

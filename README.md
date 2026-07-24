@@ -39,14 +39,17 @@ Every build you load is remembered as a chip under the box (**Saved:**) so you
 can flick between builds with one click. Use **✎** to rename one, **✕** to
 remove it. The list is stored in `saved_builds.txt`.
 
-### Gear / Skill Tree tabs
-After loading, two tabs appear and stay collapsed until you pick one:
+### Gear / Skill Tree / Gems tabs
+After loading, three tabs appear and stay collapsed until you pick one:
 - **🛡 Gear** — the item-set stages + click-a-slot trade search (above).
 - **🌳 Skill Tree** — every passive tree the build saved (usually one per
   level/stage), each with a **View tree ↗** link that opens the full
   interactive tree on pathofexile.com.
+- **🔮 Gems** — the gem setups per stage: each socket group with its active
+  skill (gold) and support gems below, showing level/quality. The active gem
+  set is marked ★.
 
-Clicking a tab opens it and hides the other; clicking the open one collapses it.
+Clicking a tab opens it and hides the others; clicking the open one collapses it.
 
 ### maxroll.gg support
 Maxroll stores each guide's build in its own planner. The tool follows the
