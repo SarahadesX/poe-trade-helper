@@ -4,3 +4,4 @@ cache/
 __pycache__/
 *.pyc
 config.json
+saved_builds.txt

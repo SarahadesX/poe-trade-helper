@@ -18,7 +18,7 @@ import pob
 import stats
 import trade
 
-PORT = 8770
+PORT = int(os.environ.get("POE_PORT") or 8770)
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # ---- Logging: logs/app.log (everything) + logs/errors.log (errors only) ----
@@ -50,6 +50,77 @@ def _load_config():
         except Exception:
             pass
     return cfg
+
+
+# ---- Saved builds: a plain text file, one "name<TAB>url" per line ------------
+BUILDS_FILE = os.environ.get("POE_BUILDS_FILE") or os.path.join(
+    HERE, "saved_builds.txt")
+
+
+def _default_build_name(url):
+    u = url.strip().rstrip("/")
+    low = u.lower()
+    if "maxroll.gg" in low and "/build-guides/" in low:
+        slug = u.split("/build-guides/", 1)[1].split("/")[0].split("?")[0]
+        return slug.replace("-", " ").title() or "maxroll build"
+    seg = u.split("/")[-1].split("?")[0]
+    if "pobb.in" in low:
+        return f"pobb.in {seg}"
+    if "pastebin.com" in low:
+        return f"pastebin {seg}"
+    if low.startswith("http"):
+        return seg or u
+    return "Build " + (seg[:8] if seg else "?")  # raw code
+
+
+def _read_builds():
+    builds = []
+    if os.path.exists(BUILDS_FILE):
+        try:
+            with open(BUILDS_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.rstrip("\n")
+                    if not line.strip():
+                        continue
+                    name, url = (line.split("\t", 1) if "\t" in line
+                                 else ("", line))
+                    url = url.strip()
+                    if url:
+                        builds.append({"name": name.strip()
+                                       or _default_build_name(url), "url": url})
+        except Exception:
+            log.error("read builds failed\n%s", traceback.format_exc())
+    return builds
+
+
+def _write_builds(builds):
+    with open(BUILDS_FILE, "w", encoding="utf-8") as f:
+        for b in builds:
+            f.write(f"{b['name']}\t{b['url']}\n")
+
+
+def _save_build(url, name=None):
+    """Add the url if new (default name), or set its name if provided."""
+    url = (url or "").strip()
+    if not url:
+        return _read_builds()
+    builds = _read_builds()
+    for b in builds:
+        if b["url"] == url:
+            if name:
+                b["name"] = name.strip() or b["name"]
+            _write_builds(builds)
+            return builds
+    builds.append({"name": (name or "").strip() or _default_build_name(url),
+                   "url": url})
+    _write_builds(builds)
+    return builds
+
+
+def _delete_build(url):
+    builds = [b for b in _read_builds() if b["url"] != (url or "").strip()]
+    _write_builds(builds)
+    return builds
 
 
 # ---- Auto-shutdown when the browser tab closes ------------------------------
@@ -112,6 +183,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, f.read(), "text/html; charset=utf-8")
         elif path == "/api/keepalive":
             self._handle_keepalive()
+        elif path == "/api/builds":
+            self._json(200, {"builds": _read_builds()})
         elif path == "/api/leagues":
             cfg = _load_config()
             self._json(200, {"leagues": trade.get_leagues(),
@@ -131,6 +204,14 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_load(payload)
         elif self.path == "/api/search":
             self._handle_search(payload)
+        elif self.path == "/api/builds/save":
+            self._json(200, {"builds": _save_build(payload.get("url"),
+                                                   payload.get("name"))})
+        elif self.path == "/api/builds/rename":
+            self._json(200, {"builds": _save_build(payload.get("url"),
+                                                   payload.get("name"))})
+        elif self.path == "/api/builds/delete":
+            self._json(200, {"builds": _delete_build(payload.get("url"))})
         else:
             self._json(404, {"error": "not found"})
 
@@ -269,7 +350,8 @@ def main():
     # Warm caches in the background so the UI opens immediately.
     threading.Thread(target=_prewarm, daemon=True).start()
     threading.Thread(target=_watchdog, args=(server,), daemon=True).start()
-    threading.Timer(0.6, lambda: webbrowser.open(url)).start()
+    if not os.environ.get("POE_NO_BROWSER"):
+        threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

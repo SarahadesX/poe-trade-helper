@@ -33,6 +33,18 @@
   .tab{padding:7px 14px;border:1px solid var(--line);border-radius:20px;
     cursor:pointer;color:var(--muted)}
   .tab.active{border-color:var(--gold);color:var(--gold2);background:#20180d}
+  .saved{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .saved:empty{margin:0}
+  .bchip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);
+    border:1px solid var(--line);border-radius:18px;padding:5px 8px 5px 12px}
+  .bchip:hover{border-color:var(--gold)}
+  .bchip .bname{cursor:pointer;color:var(--text);max-width:220px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bchip:hover .bname{color:var(--gold2)}
+  .bchip .bx{cursor:pointer;color:var(--muted);border:none;background:none;
+    font-size:13px;line-height:1;padding:2px 4px;border-radius:4px}
+  .bchip .bx:hover{color:var(--gold2);background:#2c2417}
+  .bchip .bx.del:hover{color:var(--bad)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
     gap:10px;margin-top:12px}
   .slot{background:var(--panel);border:1px solid var(--line);border-radius:8px;
@@ -89,6 +101,8 @@
     <button class="primary" id="loadBtn">Load build</button>
   </div>
   <div id="loadMsg" class="muted" style="margin-top:8px"></div>
+
+  <div id="saved" class="saved"></div>
 
   <div id="tabs" class="tabs hide"></div>
   <div id="slots" class="grid"></div>
@@ -150,6 +164,42 @@ async function load(){
   msg.innerHTML='<span class="ok">Loaded in '+((Date.now()-t0)/1000).toFixed(1)+'s.</span> '+
     '<span class="muted">Click a tab, then a slot.</span>';
   renderTabs(); renderSlots();
+  saveBuild(link);          // remember this build in the saved list
+}
+
+// ---- Saved builds (persisted server-side in saved_builds.txt) --------------
+let SAVED=[];
+async function loadSaved(){
+  try{ const d=await api('/api/builds'); SAVED=d.builds||[]; renderSaved(); }
+  catch(e){}
+}
+function renderSaved(){
+  const el=document.getElementById('saved');
+  if(!SAVED.length){ el.innerHTML=''; return; }
+  el.innerHTML='<span class="muted" style="align-self:center">Saved:</span>'+
+    SAVED.map((b,i)=>`<span class="bchip">
+      <span class="bname" title="${esc(b.url)}" onclick="openSaved(${i})">${esc(b.name)}</span>
+      <button class="bx" title="Rename" onclick="renameSaved(${i})">✎</button>
+      <button class="bx del" title="Remove" onclick="deleteSaved(${i})">✕</button>
+    </span>`).join('');
+}
+function openSaved(i){
+  document.getElementById('link').value=SAVED[i].url; load();
+}
+async function saveBuild(url,name){
+  try{ const d=await api('/api/builds/save',{url,name}); SAVED=d.builds||SAVED; renderSaved(); }
+  catch(e){}
+}
+async function renameSaved(i){
+  const cur=SAVED[i]; const name=prompt('Rename build:', cur.name);
+  if(name===null) return;
+  try{ const d=await api('/api/builds/rename',{url:cur.url,name:name.trim()||cur.name});
+       SAVED=d.builds||SAVED; renderSaved(); }catch(e){}
+}
+async function deleteSaved(i){
+  const cur=SAVED[i];
+  if(!confirm('Remove "'+cur.name+'" from saved builds?')) return;
+  try{ const d=await api('/api/builds/delete',{url:cur.url}); SAVED=d.builds||[]; renderSaved(); }catch(e){}
 }
 
 function renderTabs(){
@@ -243,6 +293,7 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>(
   {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
 initLeagues();
+loadSaved();
 
 // Keep-alive: while this tab is open, an SSE connection stays open to the
 // server. Closing the tab drops it and the server shuts itself down. A reload

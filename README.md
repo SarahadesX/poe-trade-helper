@@ -35,6 +35,10 @@ If nothing happens (e.g. Python not installed), double-click
    untick a mod to drop it. Uniques also match by name.
    The site opens with the base type + those filters applied.
 
+Every build you load is remembered as a chip under the box (**Saved:**) so you
+can flick between builds with one click. Use **✎** to rename one, **✕** to
+remove it. The list is stored in `saved_builds.txt`.
+
 ### maxroll.gg support
 Maxroll stores each guide's build in its own planner. The tool follows the
 guide's "Open in Path of Building" link to `planners.maxroll.gg`, pulls the
