@@ -33,6 +33,18 @@
   .tab{padding:7px 14px;border:1px solid var(--line);border-radius:20px;
     cursor:pointer;color:var(--muted)}
   .tab.active{border-color:var(--gold);color:var(--gold2);background:#20180d}
+  .modetabs{display:flex;gap:10px;margin:20px 0 4px}
+  .modetab{flex:0 0 auto;padding:12px 28px;border:1px solid var(--line);
+    border-radius:10px;cursor:pointer;color:var(--muted);font-size:15px;
+    font-weight:600;background:var(--panel);transition:.15s}
+  .modetab:hover{border-color:var(--gold);color:var(--gold2)}
+  .modetab.active{border-color:var(--gold);color:#1a140a;background:var(--gold)}
+  .treerow{display:flex;align-items:center;justify-content:space-between;
+    gap:12px;padding:11px 4px;border-bottom:1px solid var(--line)}
+  .treerow:last-child{border-bottom:none}
+  .treerow .tt{font-weight:600;color:var(--text)}
+  .treerow.active .tt{color:var(--gold2)}
+  .treerow .ts{font-size:12px;margin-top:2px}
   .saved{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
   .saved:empty{margin:0}
   .bchip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);
@@ -104,10 +116,15 @@
 
   <div id="saved" class="saved"></div>
 
-  <div id="tabs" class="tabs hide"></div>
-  <div id="slots" class="grid"></div>
+  <div id="modeTabs" class="modetabs hide"></div>
 
-  <div id="detail" class="panel hide"></div>
+  <div id="gearPanel" class="hide">
+    <div id="tabs" class="tabs"></div>
+    <div id="slots" class="grid"></div>
+    <div id="detail" class="panel hide"></div>
+  </div>
+
+  <div id="treePanel" class="hide"></div>
 </div>
 
 <script>
@@ -141,8 +158,8 @@ async function load(){
   const link = document.getElementById('link').value.trim();
   const msg = document.getElementById('loadMsg');
   if(!link){msg.textContent='Paste a PoB link or code first.';return;}
-  document.getElementById('detail').classList.add('hide');
-  document.getElementById('tabs').classList.add('hide');
+  ['modeTabs','gearPanel','treePanel','detail'].forEach(id=>
+    document.getElementById(id).classList.add('hide'));
   document.getElementById('slots').innerHTML='';
   const t0=Date.now();
   const tick=setInterval(()=>{
@@ -160,11 +177,43 @@ async function load(){
   }
   clearInterval(tick);
   if(!d || d.error){msg.innerHTML='<span class="err">'+esc((d&&d.error)||'No response')+'</span>';return;}
-  BUILD=d; curSet=0; curSlot=null;
+  BUILD=d; curSet=0; curSlot=null; MODE=null;
   msg.innerHTML='<span class="ok">Loaded in '+((Date.now()-t0)/1000).toFixed(1)+'s.</span> '+
-    '<span class="muted">Click a tab, then a slot.</span>';
+    '<span class="muted">Choose Gear or Skill Tree below.</span>';
   renderTabs(); renderSlots();
+  showModeTabs(); renderMode();
   saveBuild(link);          // remember this build in the saved list
+}
+
+// ---- Top-level Gear / Skill Tree tabs (content hidden until you pick one) ---
+let MODE=null;   // null | 'gear' | 'tree'
+function showModeTabs(){
+  const mt=document.getElementById('modeTabs');
+  if(!BUILD){ mt.classList.add('hide'); mt.innerHTML=''; return; }
+  mt.classList.remove('hide');
+  const nT=(BUILD.trees||[]).length;
+  mt.innerHTML=
+    `<div class="modetab${MODE==='gear'?' active':''}" onclick="setMode('gear')">🛡 Gear</div>`+
+    `<div class="modetab${MODE==='tree'?' active':''}" onclick="setMode('tree')">🌳 Skill Tree${nT?' ('+nT+')':''}</div>`;
+}
+function setMode(m){ MODE = (MODE===m ? null : m); showModeTabs(); renderMode(); }
+function renderMode(){
+  document.getElementById('gearPanel').classList.toggle('hide', MODE!=='gear');
+  document.getElementById('treePanel').classList.toggle('hide', MODE!=='tree');
+  if(MODE==='tree') renderTrees();
+}
+function renderTrees(){
+  const el=document.getElementById('treePanel');
+  const trees=(BUILD&&BUILD.trees)||[];
+  if(!trees.length){ el.innerHTML='<div class="panel muted">This build has no saved passive trees.</div>'; return; }
+  el.innerHTML='<div class="panel"><div class="muted" style="margin-bottom:8px">'+
+    'Passive trees (usually one per level / stage). Click to open the full interactive tree on pathofexile.com:</div>'+
+    trees.map(t=>`<div class="treerow${t.active?' active':''}">
+      <div><div class="tt">${esc(t.title)}${t.active?' <span class="tag ok">active</span>':''}</div>
+        <div class="ts muted">${t.nodes} passives · tree ${esc(t.version)}${t.class?' · '+esc(t.class):''}</div></div>
+      ${t.url?`<a href="${esc(t.url)}" target="_blank"><button class="primary">View tree ↗</button></a>`
+             :'<span class="muted">no link</span>'}
+    </div>`).join('')+'</div>';
 }
 
 // ---- Saved builds (persisted server-side in saved_builds.txt) --------------

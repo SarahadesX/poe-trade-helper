@@ -207,4 +207,34 @@ def parse_build(link_or_code: str) -> dict:
 
     if not sets:
         raise ValueError("No equipped items found in this build.")
-    return {"item_sets": sets}
+
+    return {"item_sets": sets, "trees": _parse_trees(root)}
+
+
+# Passive-tree class ids -> name (ascendancy names vary per class, skipped).
+_CLASSES = {"0": "Scion", "1": "Marauder", "2": "Ranger", "3": "Witch",
+            "4": "Duelist", "5": "Templar", "6": "Shadow"}
+
+
+def _parse_trees(root):
+    """Each <Spec> is a passive tree (often per level); PoB stores a ready
+    <URL> to the official interactive tree, plus a title + node list."""
+    trees = []
+    tree_node = root.find("Tree")
+    if tree_node is None:
+        return trees
+    active = str(tree_node.get("activeSpec", ""))
+    for i, spec in enumerate(tree_node.findall("Spec"), 1):
+        url_el = spec.find("URL")
+        url = (url_el.text or "").strip() if url_el is not None else ""
+        nodes = spec.get("nodes", "")
+        count = len([n for n in nodes.split(",") if n.strip()]) if nodes else 0
+        trees.append({
+            "title": spec.get("title") or f"Tree {i}",
+            "url": url,
+            "nodes": count,
+            "version": (spec.get("treeVersion", "") or "").replace("_", "."),
+            "class": _CLASSES.get(spec.get("classId", ""), ""),
+            "active": str(i) == active,
+        })
+    return trees
