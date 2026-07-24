@@ -77,6 +77,19 @@
   .tbig{color:var(--gold2);font-size:26px;font-weight:700;margin:4px 0}
   .tsub{color:var(--muted);font-size:14px;font-weight:400}
   .tnote{color:var(--muted);font-size:12px;margin-top:3px}
+  #myGearBtn{padding:8px 14px}
+  #myGearBtn.active{background:var(--gold);color:#1a140a;border-color:var(--gold)}
+  .howto{background:#1a2230;border:1px solid #33445c;border-radius:8px;
+    padding:12px 16px;margin-bottom:14px;color:var(--text);line-height:1.6;
+    position:relative;font-size:14px}
+  .howtox{position:absolute;top:8px;right:8px;font-size:12px;padding:4px 10px}
+  .notes{white-space:pre-wrap;word-break:break-word;font:13px/1.6 "Segoe UI",
+    system-ui,sans-serif;color:var(--text);background:#0b0a08;border:1px solid
+    var(--line);border-radius:6px;padding:14px;max-height:560px;overflow:auto}
+  .gembuy{cursor:pointer;color:var(--blue);font-size:11px;margin-left:6px;
+    opacity:0;transition:.12s}
+  .gemgroup:hover .gembuy{opacity:.85}
+  .gembuy:hover{color:var(--gold2)}
   .jewelhead{margin:16px 0 6px;color:var(--gold);font-size:12px;
     text-transform:uppercase;letter-spacing:.5px}
   .opts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:12px 0 2px;
@@ -146,9 +159,16 @@
   <input id="league" list="leagueList" placeholder="League" autocomplete="off"
     title="Pick from the list or type the exact league name">
   <datalist id="leagueList"></datalist>
+  <button id="myGearBtn" onclick="toggleMyGear()">👤 My Gear</button>
 </header>
 
 <div class="wrap">
+  <div id="howto" class="howto hide">
+    <b>New here?</b> 1) Paste a build link and hit <b>Load build</b>.
+    2) Pick <b>Gear</b>, <b>Skill Tree</b>, <b>Gems</b> or <b>Guide</b>.
+    3) Click an item, then <b>Search</b> to buy it — or <b>Search whole set</b> for prices on everything.
+    <button class="howtox" onclick="dismissHowto()">Got it ✕</button>
+  </div>
   <div class="row">
     <input id="link" type="text" placeholder="Paste a maxroll.gg build guide, pobb.in / pastebin link, or raw PoB code…">
     <button class="primary" id="loadBtn">Load build</button>
@@ -165,11 +185,13 @@
     <div id="setResults" class="hide"></div>
     <div id="slots" class="grid"></div>
     <div id="jewels"></div>
-    <div id="detail" class="panel hide"></div>
   </div>
 
   <div id="treePanel" class="hide"></div>
   <div id="gemPanel" class="hide"></div>
+  <div id="notesPanel" class="hide"></div>
+  <div id="myPanel" class="hide"></div>
+  <div id="detail" class="panel hide"></div>
 </div>
 
 <script>
@@ -205,8 +227,9 @@ async function load(){
   const link = document.getElementById('link').value.trim();
   const msg = document.getElementById('loadMsg');
   if(!link){msg.textContent='Paste a PoB link or code first.';return;}
-  ['modeTabs','gearPanel','treePanel','gemPanel','detail'].forEach(id=>
-    document.getElementById(id).classList.add('hide'));
+  MYVIEW=false; document.getElementById('myGearBtn').classList.remove('active');
+  ['modeTabs','gearPanel','treePanel','gemPanel','notesPanel','myPanel','detail']
+    .forEach(id=>document.getElementById(id).classList.add('hide'));
   document.getElementById('slots').innerHTML='';
   const t0=Date.now();
   const tick=setInterval(()=>{
@@ -243,15 +266,26 @@ function showModeTabs(){
   mt.innerHTML=
     `<div class="modetab${MODE==='gear'?' active':''}" onclick="setMode('gear')">🛡 Gear</div>`+
     `<div class="modetab${MODE==='tree'?' active':''}" onclick="setMode('tree')">🌳 Skill Tree${nT?' ('+nT+')':''}</div>`+
-    `<div class="modetab${MODE==='gems'?' active':''}" onclick="setMode('gems')">🔮 Gems${nG?' ('+nG+')':''}</div>`;
+    `<div class="modetab${MODE==='gems'?' active':''}" onclick="setMode('gems')">🔮 Gems${nG?' ('+nG+')':''}</div>`+
+    (BUILD.notes?`<div class="modetab${MODE==='notes'?' active':''}" onclick="setMode('notes')">📖 Guide</div>`:'');
 }
 function setMode(m){ MODE = (MODE===m ? null : m); showModeTabs(); renderMode(); }
 function renderMode(){
   document.getElementById('gearPanel').classList.toggle('hide', MODE!=='gear');
   document.getElementById('treePanel').classList.toggle('hide', MODE!=='tree');
   document.getElementById('gemPanel').classList.toggle('hide', MODE!=='gems');
+  document.getElementById('notesPanel').classList.toggle('hide', MODE!=='notes');
+  document.getElementById('detail').classList.add('hide');
   if(MODE==='tree') renderTrees();
   if(MODE==='gems') renderGems();
+  if(MODE==='notes') renderNotes();
+}
+function renderNotes(){
+  const el=document.getElementById('notesPanel');
+  const n=(BUILD&&BUILD.notes)||'';
+  el.innerHTML='<div class="panel"><div class="muted" style="margin-bottom:8px">'+
+    'The build author\'s notes — leveling order and how to play:</div>'+
+    '<pre class="notes">'+esc(n)+'</pre></div>';
 }
 function pickGemSet(i){ curGemSet=i; renderGems(); }
 function renderGems(){
@@ -268,7 +302,7 @@ function renderGems(){
       const badge=(gm.level?` <span class="gbadge">L${gm.level}</span>`:'')+
                   (gm.quality?` <span class="gbadge">Q${gm.quality}</span>`:'');
       const cls='gem'+(gm.support?' support':'')+(gm.enabled?'':' off');
-      return `<div class="${cls}">${esc(gm.name)}${badge}</div>`;
+      return `<div class="${cls}">${esc(gm.name)}${badge} <a class="gembuy" data-n="${esc(gm.name)}" data-s="${gm.support?1:0}" onclick="buyGem(this.dataset.n,this.dataset.s==='1')">buy ↗</a></div>`;
     }).join('');
     return `<div class="gemgroup">${gems}</div>`;
   }).join('');
@@ -289,6 +323,73 @@ function renderTrees(){
              :'<span class="muted">no link</span>'}
     </div>`).join('')+'</div>';
 }
+
+// ---- Gem buy link ----------------------------------------------------------
+async function buyGem(name, support){
+  let type=name;
+  if(support && !/ Support$/i.test(name)) type=name+' Support';
+  try{
+    const d=await api('/api/search',{item:{base:type,name:'',rarity:'GEM'},mods:[],
+      league:document.getElementById('league').value});
+    if(d && d.url) window.open(d.url,'_blank');
+    else alert('Could not open gem search: '+((d&&d.error)||''));
+  }catch(e){ alert('Could not open gem search.'); }
+}
+
+// ---- How-to banner ---------------------------------------------------------
+function dismissHowto(){ try{localStorage.setItem('poe_howto_done','1');}catch(e){}
+  document.getElementById('howto').classList.add('hide'); }
+
+// ---- My Gear: your own character's equipped items (needs POESESSID) --------
+let MYVIEW=false, MYGEAR=[];
+function toggleMyGear(){
+  MYVIEW=!MYVIEW;
+  document.getElementById('myGearBtn').classList.toggle('active', MYVIEW);
+  const ids=['modeTabs','gearPanel','treePanel','gemPanel','notesPanel','detail'];
+  if(MYVIEW){
+    ids.forEach(id=>document.getElementById(id).classList.add('hide'));
+    document.getElementById('myPanel').classList.remove('hide');
+    renderMyGear();
+  }else{
+    document.getElementById('myPanel').classList.add('hide');
+    showModeTabs(); renderMode();
+  }
+}
+async function renderMyGear(){
+  const el=document.getElementById('myPanel');
+  el.innerHTML='<div class="panel"><span class="spin">Connecting to your account…</span></div>';
+  let d; try{ d=await api('/api/characters'); }catch(e){ d={error:'Could not connect.'}; }
+  if(!d || d.error){
+    el.innerHTML='<div class="panel"><div class="err">'+esc((d&&d.error)||'Could not connect.')+'</div>'+
+      '<div class="muted" style="margin-top:10px;line-height:1.7">'+
+      '<b>To connect your account (one-time):</b><br>'+
+      '1) Log in at pathofexile.com in your browser.<br>'+
+      '2) Copy the value of the <b>POESESSID</b> cookie for pathofexile.com.<br>'+
+      '3) Paste it into <b>config.json</b> next to <code>"poesessid"</code>, save, and reload.<br>'+
+      'Your login stays on your PC and is only sent to the official PoE site.</div></div>';
+    return;
+  }
+  const chars=d.characters||[];
+  if(!chars.length){ el.innerHTML='<div class="panel muted">No characters found on your account.</div>'; return; }
+  el.innerHTML='<div class="panel"><div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">'+
+    '<span class="muted">Your character:</span>'+
+    '<select id="charSel" class="optin">'+chars.map(c=>`<option value="${esc(c.name)}">${esc(c.name)} — Lv${c.level} ${esc(c.class)} (${esc(c.league)})</option>`).join('')+'</select>'+
+    '<button class="primary" onclick="loadMyGear()">Show my gear</button></div>'+
+    '<div id="myGearGrid" style="margin-top:14px"></div></div>';
+}
+async function loadMyGear(){
+  const character=(document.getElementById('charSel')||{}).value;
+  const grid=document.getElementById('myGearGrid');
+  grid.innerHTML='<span class="spin">Loading gear…</span>';
+  let d; try{ d=await api('/api/mygear',{character}); }catch(e){ d={error:'Failed to load gear.'}; }
+  if(!d || d.error){ grid.innerHTML='<span class="err">'+esc((d&&d.error)||'Failed.')+'</span>'; return; }
+  MYGEAR=d.slots||[];
+  if(!MYGEAR.length){ grid.innerHTML='<span class="muted">No equipped items found.</span>'; return; }
+  grid.innerHTML='<div class="muted" style="margin-bottom:8px">Click a piece to search for an upgrade:</div>'+
+    '<div class="grid">'+MYGEAR.map((s,i)=>slotCard(s,`pickMyGear(${i})`)).join('')+'</div>';
+  document.getElementById('detail').classList.add('hide');
+}
+function pickMyGear(i){ curItem=MYGEAR[i]; showDetail(); }
 
 // ---- Saved builds (persisted server-side in saved_builds.txt) --------------
 let SAVED=[];
@@ -534,6 +635,7 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>(
 
 initLeagues();
 loadSaved();
+try{ if(!localStorage.getItem('poe_howto_done')) document.getElementById('howto').classList.remove('hide'); }catch(e){}
 
 // Keep-alive: while this tab is open, an SSE connection stays open to the
 // server. Closing the tab drops it and the server shuts itself down. A reload

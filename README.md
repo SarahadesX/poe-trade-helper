@@ -56,7 +56,15 @@ After loading, three tabs appear and stay collapsed until you pick one:
   interactive tree on pathofexile.com.
 - **🔮 Gems** — the gem setups per stage: each socket group with its active
   skill (gold) and support gems below, showing level/quality. The active gem
-  set is marked ★.
+  set is marked ★. Hover a gem for a **buy ↗** link.
+- **📖 Guide** — the build author's own notes (leveling order, how to play),
+  if the build has any.
+
+### My Gear (connect your account)
+Click **👤 My Gear** in the header to see your own character's equipped items
+and search upgrades for each. One-time setup: log in at pathofexile.com, copy
+your **POESESSID** cookie into `config.json`, and reload. It only talks to the
+official PoE site and your login never leaves your PC.
 
 Clicking a tab opens it and hides the others; clicking the open one collapses it.
 

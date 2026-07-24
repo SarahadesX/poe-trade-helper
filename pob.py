@@ -210,7 +210,17 @@ def parse_build(link_or_code: str) -> dict:
 
     return {"item_sets": sets, "trees": _parse_trees(root),
             "skills": _parse_skills(root),
-            "jewels": _parse_tree_jewels(root, items_by_id)}
+            "jewels": _parse_tree_jewels(root, items_by_id),
+            "notes": _clean_notes(root.findtext("Notes") or "")}
+
+
+def _clean_notes(text):
+    """The author's build notes, minus PoB's inline colour codes."""
+    if not text:
+        return ""
+    text = re.sub(r"\^x[0-9A-Fa-f]{6}", "", text)  # ^xRRGGBB
+    text = re.sub(r"\^[0-9]", "", text)            # ^0-^9 presets
+    return text.strip()
 
 
 def _parse_tree_jewels(root, items_by_id):

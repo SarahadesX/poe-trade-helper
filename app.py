@@ -14,6 +14,7 @@ import traceback
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import account
 import pob
 import stats
 import trade
@@ -50,6 +51,17 @@ def _load_config():
         except Exception:
             pass
     return cfg
+
+
+def _enrich(idx, lines):
+    """Annotate each mod line with its matched trade stat id + value."""
+    out = []
+    for line in lines:
+        m = idx.match(line)
+        out.append({"line": line, "matched": bool(m),
+                    "value": (m["value"] if m else None),
+                    "id": (m["id"] if m else None)})
+    return out
 
 
 # ---- Saved builds: a plain text file, one "name<TAB>url" per line ------------
@@ -185,6 +197,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_keepalive()
         elif path == "/api/builds":
             self._json(200, {"builds": _read_builds()})
+        elif path == "/api/characters":
+            self._handle_characters()
         elif path == "/api/leagues":
             cfg = _load_config()
             leagues = trade.get_leagues()
@@ -210,6 +224,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_search(payload)
         elif self.path == "/api/searchset":
             self._handle_searchset(payload)
+        elif self.path == "/api/mygear":
+            self._handle_mygear(payload)
         elif self.path == "/api/builds/save":
             self._json(200, {"builds": _save_build(payload.get("url"),
                                                    payload.get("name"))})
@@ -242,18 +258,29 @@ class Handler(BaseHTTPRequestHandler):
                                     "See logs/errors.log (check your connection)."})
         for iset in build["item_sets"]:
             for slot in iset["slots"]:
-                enriched = []
-                for line in slot["mods"]:
-                    m = idx.match(line)
-                    enriched.append({
-                        "line": line,
-                        "matched": bool(m),
-                        "value": (m["value"] if m else None),
-                        "id": (m["id"] if m else None),
-                    })
-                slot["mods"] = enriched
+                slot["mods"] = _enrich(idx, slot["mods"])
         log.info("LOAD done in %.2fs total", time.time() - t0)
         self._json(200, build)
+
+    def _handle_characters(self):
+        chars, err = account.get_characters(
+            _load_config().get("poesessid", ""))
+        self._json(200, {"characters": chars, "error": err})
+
+    def _handle_mygear(self, payload):
+        cfg = _load_config()
+        character = (payload.get("character") or "").strip()
+        if not character:
+            return self._json(400, {"error": "No character selected."})
+        slots, err = account.get_gear(character, cfg.get("poesessid", ""),
+                                      cfg.get("accountName") or None)
+        if err:
+            return self._json(200, {"slots": [], "error": err})
+        idx = stats.get_index()
+        for s in slots:
+            s["mods"] = _enrich(idx, s["mods"])
+        log.info("MYGEAR %s -> %d slots", character, len(slots))
+        self._json(200, {"slots": slots, "error": None})
 
     def _handle_search(self, payload):
         item = payload.get("item") or {}
