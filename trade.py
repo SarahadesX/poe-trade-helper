@@ -137,9 +137,10 @@ def build_query(item, specs, use_type=True, use_name=False, opts=None):
         if nm:
             query["query"]["name"] = nm
 
-    # Budget / corrupted / links filters.
+    # Always show only "Buyout or Fixed Price" listings (instant buy) — never
+    # negotiate-by-whisper ones. This is the trade site's buyout filter.
     opts = opts or {}
-    fdict = {}
+    fdict = {"trade_filters": {"filters": {"sale_type": {"option": "priced"}}}}
     try:
         max_price = float(opts["max_price"]) if opts.get("max_price") not in (
             None, "") else None
