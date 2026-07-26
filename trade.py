@@ -313,30 +313,52 @@ def get_divine_rate(league):
 
 _GEM_ICON_FILE = os.path.join(CACHE_DIR, "gem_icons.json")
 _gem_icons = None
-_GEM_ART = "https://web.poecdn.com/image/Art/2DItems/Gems/"
+_CDN_IMAGE = "https://web.poecdn.com/image/"
+# Every gem's real art path, from the community RePoE data dump (one static
+# file, no API/rate limits). Gem art names rarely match the display name --
+# e.g. Spectral Throw -> GhostlyThrow, Inspiration -> Support/ReducedManaCost.
+_REPOE_BASE_ITEMS = ("https://raw.githubusercontent.com/brather1ng/RePoE/"
+                     "master/RePoE/data/base_items.json")
+_GEM_ART_FILE = os.path.join(CACHE_DIR, "gem_art.json")
+_gem_art = None
 
 
-def _cdn_gem_icon(name, support):
-    """Try PoE's static gem art paths (no API call, no rate limit). Many gems
-    are named predictably; the ones that aren't fall back to a trade lookup."""
-    squash = re.sub(r"[^A-Za-z]", "", name)          # "Herald of Ice"->HeraldofIce
-    title = re.sub(r"[^A-Za-z]", "", name.title())   # ->HeraldOfIce
-    cands = [squash + ".png", title + ".png"]
-    if support:
-        cands = ([f"Support/{squash}.png", f"Support/{title}.png"]
-                 + cands + [f"Support/{squash}Support.png"])
-    for c in cands:
-        u = _GEM_ART + c
-        try:
-            req = urllib.request.Request(u, headers={"User-Agent": UA},
-                                         method="HEAD")
-            with urllib.request.urlopen(req, timeout=4) as r:
-                if r.status == 200 and "image" in (
-                        r.headers.get("Content-Type") or ""):
-                    return u
-        except Exception:
-            continue
-    return None
+def _gem_art_map():
+    """{gem display name: CDN image url}. Cached on disk for 30 days."""
+    global _gem_art
+    if _gem_art is not None:
+        return _gem_art
+    try:
+        if (os.path.exists(_GEM_ART_FILE)
+                and time.time() - os.path.getmtime(_GEM_ART_FILE) < 30 * 86400):
+            with open(_GEM_ART_FILE, "r", encoding="utf-8") as f:
+                _gem_art = json.load(f)
+                return _gem_art
+    except Exception:
+        pass
+    art = {}
+    try:
+        with urllib.request.urlopen(urllib.request.Request(
+                _REPOE_BASE_ITEMS, headers={"User-Agent": UA}), timeout=60) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        for v in data.values():
+            if "gem" not in (v.get("item_class") or "").lower():
+                continue
+            dds = (v.get("visual_identity") or {}).get("dds_file") or ""
+            name = v.get("name")
+            if not (name and dds):
+                continue
+            url = _CDN_IMAGE + dds.replace(".dds", ".png")
+            art[name] = url
+            if name.endswith(" Support"):     # PoB stores the short name
+                art.setdefault(name[:-8], url)
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        with open(_GEM_ART_FILE, "w", encoding="utf-8") as f:
+            json.dump(art, f)
+    except Exception:
+        pass
+    _gem_art = art
+    return art
 
 
 def _load_gem_icons():
@@ -350,65 +372,52 @@ def _load_gem_icons():
     return _gem_icons
 
 
-def get_gem_icons(names, league, supports=None):
-    """{gem name: icon url}. Tries PoE's static gem art first (free, instant),
-    then falls back to a trade lookup for gems whose art file is named
-    differently. Results are cached on disk so each gem resolves only once."""
-    icons = _load_gem_icons()
-    supports = supports or {}
-    todo = [n for n in dict.fromkeys(names) if n and not icons.get(n)]
-    found_any = False
-
-    # Pass 1: static CDN paths — no API, no rate limit. Capped per request so
-    # the UI gets a fast response and just asks again for the rest.
-    still = []
-    for name in todo[:14]:
-        u = _cdn_gem_icon(name, bool(supports.get(name)))
-        if u:
-            icons[name] = u
-            found_any = True
-        else:
-            still.append(name)
-
-    # Pass 2: trade lookup for the leftovers (throttled, small batch).
-    for name in still[:4]:
-        url = None
+def _guess_gem_icon(name, support):
+    """Fallback for gems newer than the art map: try the obvious CDN paths."""
+    squash = re.sub(r"[^A-Za-z]", "", name)
+    title = re.sub(r"[^A-Za-z]", "", name.title())
+    cands = [f"Support/{squash}.png", f"Support/{title}.png"] if support else []
+    cands += [squash + ".png", title + ".png"]
+    for c in cands:
+        u = _CDN_IMAGE + "Art/2DItems/Gems/" + c
         try:
-            q = build_query({"rarity": "GEM", "base": name}, [], use_type=True)
-            q["query"]["status"] = {"option": "any"}
-            q["query"].pop("filters", None)   # gems: no category/buyout filters
-            data, err = _post_search(q, league)
-            if err and "429" in err:          # rate-limited: wait it out once
-                time.sleep(6)
-                data, err = _post_search(q, league)
-            hits = (data or {}).get("result") or []
-            if not err and hits:
-                u = ("https://www.pathofexile.com/api/trade/fetch/" + hits[0]
-                     + "?query=" + data["id"])
-                with urllib.request.urlopen(urllib.request.Request(
-                        u, headers={"User-Agent": UA,
-                                    "Accept": "application/json"}),
-                        timeout=15) as r:
-                    fd = json.loads(r.read().decode("utf-8"))
-                res = fd.get("result") or []
-                if res:
-                    url = (res[0].get("item") or {}).get("icon")
+            with urllib.request.urlopen(urllib.request.Request(
+                    u, headers={"User-Agent": UA}, method="HEAD"),
+                    timeout=4) as r:
+                if r.status == 200 and "image" in (
+                        r.headers.get("Content-Type") or ""):
+                    return u
         except Exception:
-            url = None
-        # Only cache real hits — a miss is usually just trade being sparse or
-        # rate-limited, and shouldn't blacklist the gem forever.
-        if url:
-            icons[name] = url
-            found_any = True
-        time.sleep(2.0)               # GGG rate-limits search creation hard
-    if found_any:
+            continue
+    return None
+
+
+def get_gem_icons(names, league=None, supports=None):
+    """{gem name: icon url}. Resolved from the RePoE art map — instant, no API
+    calls and no rate limits. Gems newer than the map fall back to a quick
+    name guess, cached so it's only attempted once."""
+    art = _gem_art_map()
+    supports = supports or {}
+    extra = _load_gem_icons()
+    out, guessed = {}, False
+    for n in dict.fromkeys(names):
+        if not n:
+            continue
+        u = art.get(n) or art.get(n + " Support") or extra.get(n)
+        if not u and n not in extra:
+            u = _guess_gem_icon(n, bool(supports.get(n)))
+            extra[n] = u or ""        # remember misses too (map won't change)
+            guessed = True
+        if u:
+            out[n] = u
+    if guessed:
         try:
             os.makedirs(CACHE_DIR, exist_ok=True)
             with open(_GEM_ICON_FILE, "w", encoding="utf-8") as f:
-                json.dump(icons, f)
+                json.dump(extra, f)
         except Exception:
             pass
-    return {n: icons.get(n) for n in names if icons.get(n)}
+    return out
 
 
 def fetch_results(query, league, poesessid="", limit=8):
