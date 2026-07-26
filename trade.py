@@ -105,6 +105,10 @@ def category_for(slot, base):
     armour.chest). Chosen so it never conflicts with the exact base type."""
     s, b = (slot or "").lower(), (base or "").lower()
     if "jewel" in b or "jewel" in s or "socket" in s:
+        if "cluster jewel" in b:
+            return "jewel.cluster"
+        if "eye jewel" in b or "abyss" in b or "abyss" in s:
+            return "jewel.abyss"
         return "jewel"
     if "flask" in s or "flask" in b:
         return "flask"
@@ -324,7 +328,8 @@ _gem_art = None
 
 
 def _gem_art_map():
-    """{gem display name: CDN image url}. Cached on disk for 30 days."""
+    """{item/gem display name: CDN image url} for every base item (gems,
+    jewels, armour, weapons...). Cached on disk for 30 days."""
     global _gem_art
     if _gem_art is not None:
         return _gem_art
@@ -342,14 +347,12 @@ def _gem_art_map():
                 _REPOE_BASE_ITEMS, headers={"User-Agent": UA}), timeout=60) as r:
             data = json.loads(r.read().decode("utf-8"))
         for v in data.values():
-            if "gem" not in (v.get("item_class") or "").lower():
-                continue
             dds = (v.get("visual_identity") or {}).get("dds_file") or ""
             name = v.get("name")
             if not (name and dds):
                 continue
             url = _CDN_IMAGE + dds.replace(".dds", ".png")
-            art[name] = url
+            art.setdefault(name, url)
             if name.endswith(" Support"):     # PoB stores the short name
                 art.setdefault(name[:-8], url)
         os.makedirs(CACHE_DIR, exist_ok=True)
@@ -359,6 +362,12 @@ def _gem_art_map():
         pass
     _gem_art = art
     return art
+
+
+def get_item_icons(bases):
+    """{base type: CDN image url} for item/jewel base types."""
+    art = _gem_art_map()
+    return {b: art[b] for b in dict.fromkeys(bases) if b and art.get(b)}
 
 
 def _load_gem_icons():

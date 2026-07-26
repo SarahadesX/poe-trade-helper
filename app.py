@@ -227,6 +227,13 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_searchset(payload)
         elif self.path == "/api/searchitems":
             self._handle_searchitems(payload)
+        elif self.path == "/api/itemicons":
+            try:
+                icons = trade.get_item_icons(payload.get("bases") or [])
+            except Exception:
+                log.error("item icons failed\n%s", traceback.format_exc())
+                icons = {}
+            self._json(200, {"icons": icons})
         elif self.path == "/api/gemicons":
             league = (payload.get("league")
                       or _load_config()["league"]).strip()

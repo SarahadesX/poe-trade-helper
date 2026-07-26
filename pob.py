@@ -29,6 +29,7 @@ _META_KEYS = (
     "Chance to Block:", "Stack Size:", "Item Class:", "Corrupted",
     "Mirrored", "Split", "Crafted:", "Selected Variant:", "Has Alt Variant",
     "Cluster Jewel", "Catalyst", "Anointed", "Implicits:",
+    "League:", "Requires Class", "Source:", "Upgrade:", "Note:",
 )
 
 
