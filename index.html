@@ -199,6 +199,51 @@
   .slotimg{width:38px;height:38px;flex:0 0 auto;object-fit:contain;
     border-radius:5px;background:rgba(0,0,0,.28)}
   .slottext{min-width:0;flex:1}
+
+  /* ---- RPG paper-doll gear layout ---- */
+  .doll{display:grid;gap:10px;margin-top:14px;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    grid-template-areas:
+      "w1     helm  amu   w2"
+      "w1     body  ring1 w2"
+      "gloves body  ring2 boots"
+      "gloves belt  belt  boots";}
+  .doll > .islot{grid-area:var(--a)}
+  .dollrow{display:grid;gap:10px;margin-top:10px;
+    grid-template-columns:repeat(auto-fill,minmax(132px,1fr))}
+  .dollhead{margin:18px 0 2px;color:var(--gold);font-size:12px;
+    text-transform:uppercase;letter-spacing:.5px}
+  /* Item card inside the doll: big art, name under it */
+  .islot{display:flex;flex-direction:column;align-items:center;text-align:center;
+    gap:6px;padding:12px 10px;border-radius:12px;cursor:pointer;min-height:118px;
+    background:linear-gradient(180deg,#1f1b15,#171410);
+    border:1px solid var(--line);position:relative;overflow:hidden;
+    transition:transform .12s, border-color .15s, box-shadow .15s}
+  .islot:hover{border-color:var(--gold);transform:translateY(-2px);
+    box-shadow:var(--shadow)}
+  .islot.tall{min-height:180px;justify-content:center}
+  .islot.small{min-height:100px}
+  .islot::after{content:'';position:absolute;inset:0 0 auto 0;height:2px;
+    background:var(--line)}
+  .islot.r-UNIQUE::after{background:#af6025}
+  .islot.r-RARE::after{background:#c9b458}
+  .islot.r-MAGIC::after{background:#6a6aff}
+  .islot .iimg{width:62px;height:62px;object-fit:contain;
+    filter:drop-shadow(0 3px 6px rgba(0,0,0,.5))}
+  .islot.tall .iimg{width:82px;height:112px}
+  .islot.small .iimg{width:42px;height:42px}
+  .islot .iname{font-size:12.5px;font-weight:600;color:var(--gold2);
+    line-height:1.25;word-break:break-word}
+  .islot.r-UNIQUE .iname{color:#d08b45}
+  .islot.r-MAGIC .iname{color:#8f8fff}
+  .islot .islotname{font-size:10px;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.5px}
+  .islot .ibase{font-size:11px;color:var(--muted);line-height:1.2}
+  .iimg.noart{display:flex;align-items:center;justify-content:center;
+    border:1px dashed var(--line);border-radius:8px;color:var(--muted);
+    font-size:20px;font-weight:700;background:rgba(0,0,0,.2)}
+  .islot.empty{opacity:.35;cursor:default;border-style:dashed}
+  .islot.empty:hover{transform:none;border-color:var(--line);box-shadow:none}
   .slot .in{color:var(--gold2);font-weight:600}
   .slot .ib{font-size:12px;color:var(--muted)}
   .r-UNIQUE .in{color:#af6025}
@@ -266,7 +311,7 @@
     <div id="tabs" class="tabs"></div>
     <div id="setbar"></div>
     <div id="setResults" class="hide"></div>
-    <div id="slots" class="grid"></div>
+    <div id="slots"></div>
     <div id="jewels"></div>
   </div>
 
@@ -532,7 +577,7 @@ function renderMyGearGrid(){
   const grid=document.getElementById('myGearGrid');
   if(!grid || !MYGEAR.length) return;
   grid.innerHTML='<div class="ok" style="margin:6px 0 8px">✓ Found your gear — click any piece to search for an upgrade:</div>'+
-    '<div class="grid">'+MYGEAR.map((s,i)=>slotCard(s,`pickMyGear(${i})`)).join('')+'</div>';
+    dollHtml(MYGEAR, 'pickMyGear');
 }
 function pickMyGear(i){ curItem=MYGEAR[i]; showDetail(); }
 
@@ -594,16 +639,68 @@ function slotCard(s,handler){
      </div>
    </div>`;
 }
+// Classic RPG paper-doll: weapons flank, armour down the middle, jewellery
+// beside it, flasks in a row — so gear reads like the in-game window.
+const DOLL=[['Weapon 1','w1','tall'],['Helmet','helm',''],['Amulet','amu','small'],
+            ['Weapon 2','w2','tall'],['Body Armour','body','tall'],
+            ['Ring 1','ring1','small'],['Ring 2','ring2','small'],
+            ['Gloves','gloves',''],['Boots','boots',''],['Belt','belt','']];
+function itemCard(s,handler,size,label){
+  const ic=s?ITEMICONS[s.base]:null;
+  if(!s) return `<div class="islot empty ${size}" style="--a:${label.a}">
+      <div class="islotname">${esc(label.name)}</div></div>`;
+  // PoB names unnamed rares "New Item" — show the base type instead.
+  const generic=!s.name || /^new item$/i.test(s.name);
+  const title=generic ? s.base : s.name;
+  const sub=(!generic && s.base && s.base!==s.name) ? s.base : '';
+  return `<div class="islot ${size} r-${s.rarity}" style="--a:${label.a}" onclick="${handler}"
+      title="${esc(s.base)}">
+    <div class="islotname">${esc(s.slot)}</div>
+    ${ic?`<img class="iimg" src="${esc(ic)}" alt="" loading="lazy">`
+       :`<div class="iimg noart">${esc((title||'?').charAt(0))}</div>`}
+    <div class="iname">${esc(title)}</div>
+    ${sub?`<div class="ibase">${esc(sub)}</div>`:''}
+  </div>`;
+}
 function renderSlots(){
   document.getElementById('slots').innerHTML =
-    BUILD.item_sets[curSet].slots.map((s,i)=>slotCard(s,`pickSlot(${i})`)).join('');
+    dollHtml(BUILD.item_sets[curSet].slots, 'pickSlot');
+}
+function dollHtml(slots, picker){
+  const byName={}; slots.forEach((s,i)=>{ byName[s.slot]=[s,i]; });
+  const used=new Set();
+
+  let doll='';
+  for(const [name,area,size] of DOLL){
+    const hit=byName[name];
+    if(hit) used.add(hit[1]);
+    doll+=itemCard(hit?hit[0]:null, hit?`${picker}(${hit[1]})`:'', size,
+                   {a:area,name});
+  }
+  let html='<div class="doll">'+doll+'</div>';
+
+  const flasks=slots.map((s,i)=>[s,i]).filter(([s])=>/^Flask/i.test(s.slot))
+    .sort((a,b)=>(parseInt(a[0].slot.replace(/\D/g,''))||0)-(parseInt(b[0].slot.replace(/\D/g,''))||0));
+  flasks.forEach(([,i])=>used.add(i));
+  if(flasks.length){
+    html+='<div class="dollhead">Flasks</div><div class="dollrow">'+
+      flasks.map(([s,i])=>itemCard(s,`${picker}(${i})`,'small',{a:'auto'})).join('')+
+      '</div>';
+  }
+  const rest=slots.map((s,i)=>[s,i]).filter(([,i])=>!used.has(i));
+  if(rest.length){
+    html+='<div class="dollhead">Other</div><div class="dollrow">'+
+      rest.map(([s,i])=>itemCard(s,`${picker}(${i})`,'small',{a:'auto'})).join('')+
+      '</div>';
+  }
+  return html;
 }
 function renderJewels(){
   const el=document.getElementById('jewels');
   const jw=(BUILD&&BUILD.jewels)||[];
   if(!jw.length){ el.innerHTML=''; return; }
-  el.innerHTML='<div class="jewelhead">Tree jewels ('+jw.length+')</div><div class="grid">'+
-    jw.map((s,i)=>slotCard(s,`pickJewel(${i})`)).join('')+'</div>';
+  el.innerHTML='<div class="dollhead">Tree jewels ('+jw.length+')</div><div class="dollrow">'+
+    jw.map((s,i)=>itemCard(s,`pickJewel(${i})`,'small',{a:'auto'})).join('')+'</div>';
 }
 function pickSlot(i){ curItem=BUILD.item_sets[curSet].slots[i]; showDetail(); }
 function pickJewel(i){ curItem=BUILD.jewels[i]; showDetail(); }

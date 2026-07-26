@@ -365,9 +365,28 @@ def _gem_art_map():
 
 
 def get_item_icons(bases):
-    """{base type: CDN image url} for item/jewel base types."""
+    """{base type: CDN image url} for item/jewel base types. Magic items carry
+    an affixed name ("Flagellant's Stibnite Flask of the Impala"), so fall back
+    to the longest real base type contained in the string."""
     art = _gem_art_map()
-    return {b: art[b] for b in dict.fromkeys(bases) if b and art.get(b)}
+    out, unresolved = {}, []
+    for b in dict.fromkeys(bases):
+        if not b:
+            continue
+        u = art.get(b) or art.get(re.sub(r"\s*\([^)]*\)\s*$", "", b).strip())
+        if u:
+            out[b] = u
+        else:
+            unresolved.append(b)
+    if unresolved:
+        keys = sorted(art, key=len, reverse=True)
+        for b in unresolved:
+            low = b.lower()
+            for k in keys:
+                if len(k) >= 4 and k.lower() in low:
+                    out[b] = art[k]
+                    break
+    return out
 
 
 def _load_gem_icons():
