@@ -6,39 +6,69 @@
 <title>PoE Trade Helper</title>
 <style>
   :root{
-    --bg:#0e0d0b; --panel:#1a1712; --panel2:#221d16; --line:#3a3226;
-    --gold:#c8aa6e; --gold2:#e6c98a; --text:#d6cbb4; --muted:#8a7f6a;
-    --good:#7bbf6a; --bad:#c96a5a; --blue:#5aa0d6;
+    --bg:#0d0c0a; --panel:#191612; --panel2:#221d17; --line:#3a3226;
+    --gold:#c8aa6e; --gold2:#e8cf95; --text:#ded4c0; --muted:#8f8470;
+    --good:#7ec46c; --bad:#d2705f; --blue:#63a9dd;
+    --shadow:0 4px 18px rgba(0,0,0,.45);
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);
-    font:14px/1.5 "Segoe UI",system-ui,sans-serif}
+  body{margin:0;color:var(--text);font:14px/1.55 "Segoe UI",system-ui,sans-serif;
+    background:
+      radial-gradient(1100px 520px at 15% -8%, rgba(200,170,110,.10), transparent 60%),
+      radial-gradient(900px 480px at 100% 0%, rgba(99,169,221,.07), transparent 55%),
+      var(--bg);
+    background-attachment:fixed;min-height:100vh}
   a{color:var(--gold2)}
-  header{padding:16px 22px;border-bottom:1px solid var(--line);
-    display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:#120f0b}
-  header h1{font-size:18px;margin:0;color:var(--gold);letter-spacing:.5px}
-  .wrap{max-width:1100px;margin:0 auto;padding:20px}
+  ::selection{background:rgba(200,170,110,.28)}
+  header{padding:14px 24px;display:flex;gap:14px;align-items:center;
+    flex-wrap:wrap;position:sticky;top:0;z-index:20;
+    background:linear-gradient(180deg,rgba(20,17,13,.97),rgba(20,17,13,.88));
+    border-bottom:1px solid var(--line);backdrop-filter:blur(8px);
+    box-shadow:0 2px 14px rgba(0,0,0,.35)}
+  header h1{font-size:18px;margin:0;letter-spacing:.4px;font-weight:700;
+    background:linear-gradient(95deg,#e8cf95,#c8aa6e 60%,#b08d52);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .wrap{max-width:1100px;margin:0 auto;padding:22px 20px 60px}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   input,select,button,textarea{font:inherit;color:var(--text)}
-  input[type=text],select{background:var(--panel2);border:1px solid var(--line);
-    border-radius:6px;padding:9px 11px}
+  input[type=text],input[type=number],select{background:#100e0b;
+    border:1px solid var(--line);border-radius:8px;padding:9px 12px;
+    transition:border-color .15s, box-shadow .15s}
+  input[type=text]:focus,input[type=number]:focus,select:focus{outline:none;
+    border-color:var(--gold);box-shadow:0 0 0 3px rgba(200,170,110,.13)}
   input[type=text]{flex:1;min-width:280px}
   #league{flex:0 0 auto;min-width:150px;width:190px}
-  button{background:var(--panel2);border:1px solid var(--gold);color:var(--gold2);
-    border-radius:6px;padding:9px 16px;cursor:pointer;transition:.15s}
-  button:hover{background:#2c2417}
-  button.primary{background:var(--gold);color:#1a140a;border-color:var(--gold)}
-  button.primary:hover{background:var(--gold2)}
+  input[type=checkbox]{accent-color:var(--gold);width:15px;height:15px;
+    cursor:pointer}
+  button{background:linear-gradient(180deg,#2a2419,#211c14);
+    border:1px solid var(--line);color:var(--gold2);border-radius:8px;
+    padding:9px 16px;cursor:pointer;font-weight:600;
+    transition:transform .12s, border-color .15s, box-shadow .15s, background .15s}
+  button:hover{border-color:var(--gold);transform:translateY(-1px);
+    box-shadow:0 4px 14px rgba(0,0,0,.4)}
+  button:active{transform:translateY(0)}
+  button.primary{background:linear-gradient(180deg,#e2c489,#c8aa6e);
+    color:#1a140a;border-color:#d8bb7d;box-shadow:0 2px 10px rgba(200,170,110,.2)}
+  button.primary:hover{background:linear-gradient(180deg,#f0d69f,#d4b87b);
+    box-shadow:0 6px 20px rgba(200,170,110,.3)}
   .tabs{display:flex;gap:8px;margin:18px 0 6px;flex-wrap:wrap}
-  .tab{padding:7px 14px;border:1px solid var(--line);border-radius:20px;
-    cursor:pointer;color:var(--muted)}
-  .tab.active{border-color:var(--gold);color:var(--gold2);background:#20180d}
-  .modetabs{display:flex;gap:10px;margin:20px 0 4px}
+  .tab{padding:7px 15px;border:1px solid var(--line);border-radius:20px;
+    cursor:pointer;color:var(--muted);background:rgba(255,255,255,.02);
+    transition:.15s;font-size:13px}
+  .tab:hover{color:var(--text);border-color:#574b39}
+  .tab.active{border-color:var(--gold);color:var(--gold2);
+    background:linear-gradient(180deg,#2b2115,#231a10);
+    box-shadow:0 2px 10px rgba(0,0,0,.3)}
+  .modetabs{display:flex;gap:10px;margin:22px 0 4px}
   .modetab{flex:0 0 auto;padding:12px 28px;border:1px solid var(--line);
-    border-radius:10px;cursor:pointer;color:var(--muted);font-size:15px;
-    font-weight:600;background:var(--panel);transition:.15s}
-  .modetab:hover{border-color:var(--gold);color:var(--gold2)}
-  .modetab.active{border-color:var(--gold);color:#1a140a;background:var(--gold)}
+    border-radius:12px;cursor:pointer;color:var(--muted);font-size:15px;
+    font-weight:600;background:linear-gradient(180deg,#1d1a14,#171410);
+    transition:transform .12s, border-color .15s, color .15s, box-shadow .15s}
+  .modetab:hover{border-color:var(--gold);color:var(--gold2);
+    transform:translateY(-2px);box-shadow:var(--shadow)}
+  .modetab.active{border-color:#d8bb7d;color:#1a140a;
+    background:linear-gradient(180deg,#e2c489,#c8aa6e);
+    box-shadow:0 6px 20px rgba(200,170,110,.28)}
   .treerow{display:flex;align-items:center;justify-content:space-between;
     gap:12px;padding:11px 4px;border-bottom:1px solid var(--line)}
   .treerow:last-child{border-bottom:none}
@@ -49,8 +79,19 @@
     gap:10px;margin-top:12px}
   .gemgroup{background:var(--panel2);border:1px solid var(--line);
     border-radius:8px;padding:10px 12px}
-  .gem{padding:2px 0;color:var(--gold2);font-weight:600}
-  .gem.support{color:var(--text);font-weight:400;padding-left:14px;font-size:13px}
+  .gem{padding:3px 0;color:var(--gold2);font-weight:600;display:flex;
+    align-items:center;gap:7px}
+  .gem.support{color:var(--text);font-weight:400;padding-left:12px;font-size:13px}
+  .gemimg{width:26px;height:26px;flex:0 0 auto;border-radius:5px;
+    background:#0e0c09;object-fit:contain}
+  .gemimg.ph{display:inline-flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:700;color:#0e0c09;
+    background:linear-gradient(145deg,#c8aa6e,#9a8050);border-radius:5px}
+  .gem.support .gemimg{width:20px;height:20px}
+  .gem.support .gemimg.ph{font-size:10px;
+    background:linear-gradient(145deg,#7d8fa8,#5d6b80)}
+  .gemname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
   .gem.off{opacity:.4;text-decoration:line-through}
   .gbadge{font-size:10px;color:var(--muted);margin-left:5px;
     font-variant-numeric:tabular-nums}
@@ -122,9 +163,12 @@
   .optin:focus{border-color:var(--gold);outline:none}
   .saved{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
   .saved:empty{margin:0}
-  .bchip{display:inline-flex;align-items:center;gap:6px;background:var(--panel);
-    border:1px solid var(--line);border-radius:18px;padding:5px 8px 5px 12px}
-  .bchip:hover{border-color:var(--gold)}
+  .bchip{display:inline-flex;align-items:center;gap:6px;
+    background:linear-gradient(180deg,#1f1b15,#191510);
+    border:1px solid var(--line);border-radius:20px;padding:5px 8px 5px 13px;
+    transition:border-color .15s, box-shadow .15s, transform .12s}
+  .bchip:hover{border-color:var(--gold);transform:translateY(-1px);
+    box-shadow:0 3px 12px rgba(0,0,0,.35)}
   .bchip .bname{cursor:pointer;color:var(--text);max-width:220px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .bchip:hover .bname{color:var(--gold2)}
@@ -135,11 +179,20 @@
   .bchip .bx:hover{opacity:1;border-color:var(--gold);color:var(--gold2)}
   .bchip .bx.del:hover{border-color:var(--bad);color:var(--bad);
     background:rgba(201,106,90,.18)}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
-    gap:10px;margin-top:12px}
-  .slot{background:var(--panel);border:1px solid var(--line);border-radius:8px;
-    padding:11px 12px;cursor:pointer;transition:.15s}
-  .slot:hover{border-color:var(--gold);background:var(--panel2)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));
+    gap:11px;margin-top:12px}
+  .slot{background:linear-gradient(180deg,#1e1a14,#171410);
+    border:1px solid var(--line);border-radius:10px;padding:11px 13px;
+    cursor:pointer;position:relative;overflow:hidden;
+    transition:transform .12s, border-color .15s, box-shadow .15s}
+  .slot::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+    background:var(--line);transition:background .15s}
+  .slot:hover{border-color:var(--gold);transform:translateY(-2px);
+    box-shadow:var(--shadow)}
+  .slot:hover::before{background:var(--gold)}
+  .slot.r-UNIQUE::before{background:#af6025}
+  .slot.r-RARE::before{background:#c9b458}
+  .slot.r-MAGIC::before{background:#6a6aff}
   .slot .sn{font-size:11px;color:var(--muted);text-transform:uppercase;
     letter-spacing:.5px}
   .slot .in{color:var(--gold2);font-weight:600;margin-top:3px}
@@ -147,11 +200,12 @@
   .r-UNIQUE .in{color:#af6025}
   .r-RARE .in{color:#e6c98a}
   .r-MAGIC .in{color:#8888ff}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
-    padding:18px;margin-top:20px}
-  .modline{display:flex;gap:10px;align-items:flex-start;padding:6px 8px;
-    border-radius:6px}
-  .modline:hover{background:var(--panel2)}
+  .panel{background:linear-gradient(180deg,#1c1913,#171410);
+    border:1px solid var(--line);border-radius:12px;padding:18px;
+    margin-top:20px;box-shadow:var(--shadow)}
+  .modline{display:flex;gap:10px;align-items:flex-start;padding:7px 9px;
+    border-radius:7px;transition:background .12s}
+  .modline:hover{background:rgba(255,255,255,.035)}
   .modline.no{opacity:.55}
   .modline .modcheck{margin-top:4px}
   .modline .mtxt{flex:1}
@@ -195,7 +249,7 @@
     <button class="howtox" onclick="dismissHowto()">Got it ✕</button>
   </div>
   <div class="row">
-    <input id="link" type="text" placeholder="Paste a maxroll.gg build guide, pobb.in / pastebin link, or raw PoB code…">
+    <input id="link" type="text" placeholder="Paste a maxroll.gg / mobalytics.gg build, pobb.in / pastebin link, or raw PoB code…">
     <button class="primary" id="loadBtn">Load build</button>
   </div>
   <div id="loadMsg" class="muted" style="margin-top:8px"></div>
@@ -272,7 +326,7 @@ async function load(){
   }
   clearInterval(tick);
   if(!d || d.error){msg.innerHTML='<span class="err">'+esc((d&&d.error)||'No response')+'</span>';return;}
-  BUILD=d; curSet=0; curItem=null; MODE=null; curGemSet=null;
+  BUILD=d; curSet=0; curItem=null; MODE=null; curGemSet=null; GEMICONS={};
   msg.innerHTML='<span class="ok">Loaded in '+((Date.now()-t0)/1000).toFixed(1)+'s.</span> '+
     '<span class="muted">Choose Gear, Skill Tree or Gems below.</span>';
   renderTabs(); renderSlots(); renderJewels(); renderSetbar();
@@ -302,7 +356,7 @@ function renderMode(){
   document.getElementById('notesPanel').classList.toggle('hide', MODE!=='notes');
   document.getElementById('detail').classList.add('hide');
   if(MODE==='tree') renderTrees();
-  if(MODE==='gems') renderGems();
+  if(MODE==='gems'){ renderGems(); loadGemIcons(); }
   if(MODE==='notes') renderNotes();
 }
 function renderNotes(){
@@ -313,6 +367,37 @@ function renderNotes(){
     '<pre class="notes">'+esc(n)+'</pre></div>';
 }
 function pickGemSet(i){ curGemSet=i; renderGems(); }
+// Gem icons are fetched from the trade site once and cached server-side.
+let GEMICONS={}, GEMFETCHING=false;
+async function loadGemIcons(){
+  if(GEMFETCHING || !BUILD || !BUILD.skills) return;
+  const names=[], supports={};
+  for(const set of BUILD.skills)
+    for(const g of set.groups)
+      for(const gm of g.gems)
+        if(gm.name && !GEMICONS[gm.name]){ names.push(gm.name); supports[gm.name]=!!gm.support; }
+  if(!names.length) return;
+  GEMFETCHING=true;
+  const want=[...new Set(names)];
+  try{
+    // The server fetches uncached icons in small throttled batches, so keep
+    // asking until they've all filled in (cached ones return instantly).
+    let pending=want.slice();
+    for(let round=0; round<6 && pending.length; round++){
+      const batch=pending.slice(0,14);
+      const d=await api('/api/gemicons',{names:batch, supports,
+        league:document.getElementById('league').value}, 90000);
+      const got=(d&&d.icons)||{};
+      let added=0;
+      for(const [k,v] of Object.entries(got)){ if(v && !GEMICONS[k]){ GEMICONS[k]=v; added++; } }
+      // Drop this batch either way: resolved ones are cached, the rest have no
+      // art we can find (they show a lettered placeholder instead).
+      pending=pending.slice(batch.length);
+      if(added && MODE==='gems') renderGems();
+    }
+  }catch(e){}
+  GEMFETCHING=false;
+}
 function renderGems(){
   const el=document.getElementById('gemPanel');
   const sets=(BUILD&&BUILD.skills)||[];
@@ -327,7 +412,13 @@ function renderGems(){
       const badge=(gm.level?` <span class="gbadge">L${gm.level}</span>`:'')+
                   (gm.quality?` <span class="gbadge">Q${gm.quality}</span>`:'');
       const cls='gem'+(gm.support?' support':'')+(gm.enabled?'':' off');
-      return `<div class="${cls}">${esc(gm.name)}${badge} <a class="gembuy" data-n="${esc(gm.name)}" data-s="${gm.support?1:0}" onclick="buyGem(this.dataset.n,this.dataset.s==='1')">buy ↗</a></div>`;
+      const ic=GEMICONS[gm.name];
+      // Colour the placeholder by gem colour (red/green/blue) so the list still
+      // reads at a glance for gems whose art we couldn't resolve.
+      const img=ic?`<img class="gemimg" src="${esc(ic)}" alt="" loading="lazy">`
+                 :`<span class="gemimg ph">${esc((gm.name||'?').charAt(0))}</span>`;
+      return `<div class="${cls}">${img}<span class="gemname">${esc(gm.name)}${badge}</span>`+
+             `<a class="gembuy" data-n="${esc(gm.name)}" data-s="${gm.support?1:0}" onclick="buyGem(this.dataset.n,this.dataset.s==='1')">buy ↗</a></div>`;
     }).join('');
     return `<div class="gemgroup">${gems}</div>`;
   }).join('');

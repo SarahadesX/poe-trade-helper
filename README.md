@@ -24,6 +24,7 @@ If nothing happens (e.g. Python not installed), double-click
 2. Paste one of:
    - a **maxroll.gg build guide** URL (e.g. `.../poe/build-guides/...`) — the
      progression stages become the tabs automatically,
+   - a **mobalytics.gg build** URL (e.g. `.../poe/builds/...`),
    - a **pobb.in** / **pastebin** link,
    - or a raw PoB code.
    Then **Load build**.

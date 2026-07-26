@@ -311,6 +311,106 @@ def get_divine_rate(league):
     return rate
 
 
+_GEM_ICON_FILE = os.path.join(CACHE_DIR, "gem_icons.json")
+_gem_icons = None
+_GEM_ART = "https://web.poecdn.com/image/Art/2DItems/Gems/"
+
+
+def _cdn_gem_icon(name, support):
+    """Try PoE's static gem art paths (no API call, no rate limit). Many gems
+    are named predictably; the ones that aren't fall back to a trade lookup."""
+    squash = re.sub(r"[^A-Za-z]", "", name)          # "Herald of Ice"->HeraldofIce
+    title = re.sub(r"[^A-Za-z]", "", name.title())   # ->HeraldOfIce
+    cands = [squash + ".png", title + ".png"]
+    if support:
+        cands = ([f"Support/{squash}.png", f"Support/{title}.png"]
+                 + cands + [f"Support/{squash}Support.png"])
+    for c in cands:
+        u = _GEM_ART + c
+        try:
+            req = urllib.request.Request(u, headers={"User-Agent": UA},
+                                         method="HEAD")
+            with urllib.request.urlopen(req, timeout=4) as r:
+                if r.status == 200 and "image" in (
+                        r.headers.get("Content-Type") or ""):
+                    return u
+        except Exception:
+            continue
+    return None
+
+
+def _load_gem_icons():
+    global _gem_icons
+    if _gem_icons is None:
+        try:
+            with open(_GEM_ICON_FILE, "r", encoding="utf-8") as f:
+                _gem_icons = json.load(f)
+        except Exception:
+            _gem_icons = {}
+    return _gem_icons
+
+
+def get_gem_icons(names, league, supports=None):
+    """{gem name: icon url}. Tries PoE's static gem art first (free, instant),
+    then falls back to a trade lookup for gems whose art file is named
+    differently. Results are cached on disk so each gem resolves only once."""
+    icons = _load_gem_icons()
+    supports = supports or {}
+    todo = [n for n in dict.fromkeys(names) if n and not icons.get(n)]
+    found_any = False
+
+    # Pass 1: static CDN paths — no API, no rate limit. Capped per request so
+    # the UI gets a fast response and just asks again for the rest.
+    still = []
+    for name in todo[:14]:
+        u = _cdn_gem_icon(name, bool(supports.get(name)))
+        if u:
+            icons[name] = u
+            found_any = True
+        else:
+            still.append(name)
+
+    # Pass 2: trade lookup for the leftovers (throttled, small batch).
+    for name in still[:4]:
+        url = None
+        try:
+            q = build_query({"rarity": "GEM", "base": name}, [], use_type=True)
+            q["query"]["status"] = {"option": "any"}
+            q["query"].pop("filters", None)   # gems: no category/buyout filters
+            data, err = _post_search(q, league)
+            if err and "429" in err:          # rate-limited: wait it out once
+                time.sleep(6)
+                data, err = _post_search(q, league)
+            hits = (data or {}).get("result") or []
+            if not err and hits:
+                u = ("https://www.pathofexile.com/api/trade/fetch/" + hits[0]
+                     + "?query=" + data["id"])
+                with urllib.request.urlopen(urllib.request.Request(
+                        u, headers={"User-Agent": UA,
+                                    "Accept": "application/json"}),
+                        timeout=15) as r:
+                    fd = json.loads(r.read().decode("utf-8"))
+                res = fd.get("result") or []
+                if res:
+                    url = (res[0].get("item") or {}).get("icon")
+        except Exception:
+            url = None
+        # Only cache real hits — a miss is usually just trade being sparse or
+        # rate-limited, and shouldn't blacklist the gem forever.
+        if url:
+            icons[name] = url
+            found_any = True
+        time.sleep(2.0)               # GGG rate-limits search creation hard
+    if found_any:
+        try:
+            os.makedirs(CACHE_DIR, exist_ok=True)
+            with open(_GEM_ICON_FILE, "w", encoding="utf-8") as f:
+                json.dump(icons, f)
+        except Exception:
+            pass
+    return {n: icons.get(n) for n in names if icons.get(n)}
+
+
 def fetch_results(query, league, poesessid="", limit=8):
     """Create a search and return the top listings' full details (price, mods,
     weapon/defence properties) for in-app comparison. Falls back to 'any'

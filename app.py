@@ -75,6 +75,9 @@ def _default_build_name(url):
     if "maxroll.gg" in low and "/build-guides/" in low:
         slug = u.split("/build-guides/", 1)[1].split("/")[0].split("?")[0]
         return slug.replace("-", " ").title() or "maxroll build"
+    if "mobalytics.gg" in low and "/builds/" in low:
+        slug = u.split("/builds/", 1)[1].split("/")[0].split("?")[0]
+        return slug.replace("-", " ").title() or "mobalytics build"
     seg = u.split("/")[-1].split("?")[0]
     if "pobb.in" in low:
         return f"pobb.in {seg}"
@@ -224,6 +227,16 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_searchset(payload)
         elif self.path == "/api/searchitems":
             self._handle_searchitems(payload)
+        elif self.path == "/api/gemicons":
+            league = (payload.get("league")
+                      or _load_config()["league"]).strip()
+            try:
+                icons = trade.get_gem_icons(payload.get("names") or [], league,
+                                            payload.get("supports") or {})
+            except Exception:
+                log.error("gem icons failed\n%s", traceback.format_exc())
+                icons = {}
+            self._json(200, {"icons": icons})
         elif self.path == "/api/mygear":
             self._handle_mygear(payload)
         elif self.path == "/api/builds/save":

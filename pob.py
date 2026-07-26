@@ -14,7 +14,8 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 
-UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PoE-Trade-Helper/1.0"
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/120.0 Safari/537.36 PoE-Trade-Helper/1.0")
 
 MAXROLL_LOAD = "https://planners.maxroll.gg/profiles/load/poe/{id}"
 
@@ -67,11 +68,23 @@ def _maxroll_code(link: str) -> str:
     return code
 
 
+def _mobalytics_code(link: str) -> str:
+    """Mobalytics build pages embed the PoB code in the page data."""
+    html = _http_get(link)
+    m = re.search(r'"pobCode\\?"\s*:\s*\\?"([A-Za-z0-9+/=_-]{80,})', html)
+    if not m:
+        m = re.search(r'(eNr[A-Za-z0-9+/=_-]{200,})', html)
+    if not m:
+        raise ValueError("No Path of Building code found on that Mobalytics "
+                         "page.")
+    return m.group(1)
+
+
 def _resolve_to_code(link_or_code: str) -> str:
     """Turn a supported URL (or raw code) into the raw PoB code.
 
     Supports: maxroll.gg build guides / pob links / planner profiles,
-    pobb.in, pastebin, or a pasted raw PoB code.
+    mobalytics.gg build pages, pobb.in, pastebin, or a raw PoB code.
     """
     s = link_or_code.strip()
     if not s:
@@ -81,6 +94,8 @@ def _resolve_to_code(link_or_code: str) -> str:
         low = s.lower()
         if "maxroll.gg" in low:
             return _maxroll_code(s)
+        if "mobalytics.gg" in low:
+            return _mobalytics_code(s)
         url = s
         if "pobb.in/" in low and "/raw" not in low:
             url = s.rstrip("/") + "/raw"
