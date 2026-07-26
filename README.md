@@ -122,6 +122,8 @@ Allflame), so you don't have to set it. You can still type any league name.
 - Every search opens in the trade site's **Instant Buyout** mode (status
   `securable`) — items you can buy right away, never the "In Person" / whisper-
   and-haggle listings.
+- The **Item Category** filter is set too (Body Armour, Helmet, Ring, Wand, …),
+  not left on "Any", so results are scoped to the right kind of item.
 - An empty min box adds the stat filter with a blank min (fill it in on trade).
 - Mods with no matching trade stat are shown as `no trade stat` and skipped.
 - PoB ranges like `(214-285)` prefill the low end; "Adds X to Y" uses the first

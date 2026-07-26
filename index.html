@@ -513,7 +513,7 @@ function renderSetbar(){
        <span class="muted" style="font-size:12px">(pricier items turn red)</span></span>`;
 }
 function itemToSearch(s){
-  return {slot:s.slot, item:{base:s.base,name:s.name,rarity:s.rarity},
+  return {slot:s.slot, item:{base:s.base,name:s.name,rarity:s.rarity,slot:s.slot},
     mods:s.mods.filter(m=>m.matched).map(m=>({line:m.line,min:m.value})),
     use_name:s.rarity==='UNIQUE'};
 }
@@ -638,7 +638,7 @@ async function doSearch(){
   const mods=gatherDetailMods();
   const useName = !!(document.getElementById('useName')||{}).checked;
   const league=document.getElementById('league').value;
-  const payload={item:{base:s.base,name:s.name,rarity:s.rarity},mods,league,use_name:useName};
+  const payload={item:{base:s.base,name:s.name,rarity:s.rarity,slot:s.slot},mods,league,use_name:useName};
   const out=document.getElementById('searchOut');
   if(ADV){
     out.innerHTML='<div class="spin" style="margin-top:12px">Searching trade & loading items to compare…</div>';

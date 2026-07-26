@@ -100,6 +100,42 @@ def resolve_type(item):
     return base or None
 
 
+def category_for(slot, base):
+    """Trade "Item Category" filter id for a slot/base (e.g. Body Armour ->
+    armour.chest). Chosen so it never conflicts with the exact base type."""
+    s, b = (slot or "").lower(), (base or "").lower()
+    if "jewel" in b or "jewel" in s or "socket" in s:
+        return "jewel"
+    if "flask" in s or "flask" in b:
+        return "flask"
+    if "shield" in b or "buckler" in b:
+        return "armour.shield"
+    if "quiver" in b:
+        return "armour.quiver"
+    for kw, cat in (("wand", "weapon.wand"), ("sceptre", "weapon.sceptre"),
+                    ("claw", "weapon.claw"), ("dagger", "weapon.dagger"),
+                    ("bow", "weapon.bow")):
+        if kw in b:
+            return cat
+    if "weapon" in s:            # axe/mace/sword/staff/etc. -> Any Weapon (safe)
+        return "weapon"
+    if "body armour" in s or "chest" in s:
+        return "armour.chest"
+    if "helmet" in s or "helm" in s:
+        return "armour.helmet"
+    if "glove" in s:
+        return "armour.gloves"
+    if "boot" in s:
+        return "armour.boots"
+    if "amulet" in s:
+        return "accessory.amulet"
+    if "ring" in s:
+        return "accessory.ring"
+    if "belt" in s:
+        return "accessory.belt"
+    return None
+
+
 def build_query(item, specs, use_type=True, use_name=False, opts=None):
     """Assemble the trade query JSON.
 
@@ -143,6 +179,11 @@ def build_query(item, specs, use_type=True, use_name=False, opts=None):
     # negotiate-by-whisper ones. This is the trade site's buyout filter.
     opts = opts or {}
     fdict = {"trade_filters": {"filters": {"sale_type": {"option": "priced"}}}}
+    # Item Category filter (Body Armour, Helmet, Ring, ...) so it's not "Any".
+    cat = category_for(item.get("slot"), item.get("base"))
+    if cat:
+        fdict.setdefault("type_filters", {}).setdefault("filters", {})[
+            "category"] = {"option": cat}
     try:
         max_price = float(opts["max_price"]) if opts.get("max_price") not in (
             None, "") else None
