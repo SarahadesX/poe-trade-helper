@@ -119,8 +119,9 @@ Allflame), so you don't have to set it. You can still type any league name.
 - `app.py` + `index.html` — the local click-a-slot web UI.
 
 ## Notes / limits
-- Every search is **Buyout / instant-buy only** — it never shows listings you'd
-  have to whisper and haggle for, so anything you find you can just buy.
+- Every search opens in the trade site's **Instant Buyout** mode (status
+  `securable`) — items you can buy right away, never the "In Person" / whisper-
+  and-haggle listings.
 - An empty min box adds the stat filter with a blank min (fill it in on trade).
 - Mods with no matching trade stat are shown as `no trade stat` and skipped.
 - PoB ranges like `(214-285)` prefill the low end; "Adds X to Y" uses the first

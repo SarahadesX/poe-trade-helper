@@ -119,7 +119,9 @@ def build_query(item, specs, use_type=True, use_name=False, opts=None):
 
     query = {
         "query": {
-            "status": {"option": "online"},
+            # "securable" = the trade site's "Instant Buyout" mode (buy it now,
+            # no whisper-and-wait), NOT "In Person"/player trade.
+            "status": {"option": "securable"},
             "stats": [{"type": "and", "filters": filters}],
         },
         "sort": {"price": "asc"},
