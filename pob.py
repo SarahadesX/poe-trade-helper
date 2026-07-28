@@ -10,6 +10,8 @@ import base64
 import json
 import re
 import zlib
+import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -50,10 +52,65 @@ _META_EXACT = frozenset((
 ))
 
 
+class PobError(Exception):
+    """An error whose text is written for the user and shown as-is."""
+
+
+# Send what an ordinary browser sends. Some CDNs reject a browser User-Agent
+# that arrives with no Accept headers at all. (Sites that put up a real bot
+# challenge still say no, and that is their call -- see _site_blocked.)
+_BROWSER_HEADERS = {
+    "User-Agent": UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "identity",
+}
+
+
+def _site_of(url):
+    try:
+        return urllib.parse.urlsplit(url).netloc or url
+    except Exception:
+        return url
+
+
+def _site_blocked(site):
+    """Message for a site that refuses automated requests outright.
+
+    Every build site can hand you the Path of Building code directly, and
+    this app already accepts a pasted code -- so there is always a way
+    through that does not involve arguing with their bot check.
+    """
+    return PobError(
+        site + " would not let this app read that page (error 403). It blocks "
+        "programs from reading its build pages, so the link cannot be used "
+        "here.\n\nWhat to do instead: open the build in your browser, find its "
+        "\"Copy Path of Building code\" (or Export) button, then paste that "
+        "code straight into the box above instead of the link. Build links "
+        "from maxroll.gg and pobb.in work as normal.")
+
+
 def _http_get(url: str) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=25) as r:
-        return r.read().decode("utf-8", "replace")
+    req = urllib.request.Request(url, headers=dict(_BROWSER_HEADERS))
+    try:
+        with urllib.request.urlopen(req, timeout=25) as r:
+            return r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        site = _site_of(url)
+        if e.code in (401, 403):
+            raise _site_blocked(site) from None
+        if e.code == 404:
+            raise PobError(site + " has no page at that address (error 404). "
+                           "Check the link was copied in full.") from None
+        if e.code in (429, 503):
+            raise PobError(site + " is busy right now (error "
+                           + str(e.code) + "). Wait a minute and try again.") from None
+        raise PobError(site + " returned error " + str(e.code)
+                       + ". Try again in a minute.") from None
+    except urllib.error.URLError as e:
+        raise PobError("Could not reach " + _site_of(url)
+                       + ". Check your internet connection. ("
+                       + str(getattr(e, "reason", e)) + ")") from None
 
 
 def _maxroll_code(link: str) -> str:
@@ -74,22 +131,24 @@ def _maxroll_code(link: str) -> str:
         ids = re.findall(r"/poe/pob/([a-z0-9]+)", html)
         ids += re.findall(r'data-poe-profile="([a-z0-9]+)"', html)
         if not ids:
-            raise ValueError("No Path of Building build found on that maxroll "
-                             "page.")
+            raise PobError("That maxroll page does not have a Path of Building "
+                           "build on it. Try a different build guide, or "
+                           "paste the Path of Building code itself.")
 
     def load(pid):
         profile = json.loads(_http_get(MAXROLL_LOAD.format(id=pid)))
         data = profile.get("data")
         return json.loads(data) if isinstance(data, str) else (data or {})
 
-    seen = set()
+    seen, last = set(), None
     for pid in ids:
         if pid in seen:
             continue
         seen.add(pid)
         try:
             data = load(pid)
-        except Exception:
+        except Exception as e:
+            last = e          # keep it: "no pobCode" would hide a real 403
             continue
         if data.get("pobCode"):
             return data["pobCode"]
@@ -101,11 +160,16 @@ def _maxroll_code(link: str) -> str:
             seen.add(sub)
             try:
                 code = load(sub).get("pobCode")
-            except Exception:
+            except Exception as e:
+                last = e
                 continue
             if code:
                 return code
-    raise ValueError("maxroll profile had no pobCode.")
+    if isinstance(last, PobError):
+        raise last
+    raise PobError("That maxroll page does not have a Path of Building build "
+                   "saved on it. Try a different build guide, or paste the "
+                   "Path of Building code itself.")
 
 
 def _mobalytics_code(link: str) -> str:
@@ -115,8 +179,9 @@ def _mobalytics_code(link: str) -> str:
     if not m:
         m = re.search(r'(eNr[A-Za-z0-9+/=_-]{200,})', html)
     if not m:
-        raise ValueError("No Path of Building code found on that Mobalytics "
-                         "page.")
+        raise PobError("That Mobalytics page did not contain a Path of "
+                       "Building code. Open the build in your browser, copy "
+                       "its Path of Building code, and paste that here.")
     return m.group(1)
 
 
@@ -128,7 +193,7 @@ def _resolve_to_code(link_or_code: str) -> str:
     """
     s = link_or_code.strip()
     if not s:
-        raise ValueError("Empty input")
+        raise PobError("Paste a build link or a Path of Building code first.")
 
     if s.startswith("http://") or s.startswith("https://"):
         low = s.lower()
@@ -158,7 +223,9 @@ def decode_code(code: str) -> str:
             return zlib.decompress(decoder(padded)).decode("utf-8", "replace")
         except Exception:
             continue
-    raise ValueError("Could not decode PoB code (base64/zlib failed).")
+    raise PobError("That does not look like a Path of Building code or a "
+                   "build link. Paste either the whole web address of a build "
+                   "page, or the Path of Building code itself.")
 
 
 def _parse_item_block(text: str):

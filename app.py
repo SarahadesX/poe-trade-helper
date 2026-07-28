@@ -318,6 +318,11 @@ class Handler(BaseHTTPRequestHandler):
         t0 = time.time()
         try:
             build = pob.parse_build(link)
+        except pob.PobError as e:
+            # Already written for the user -- prefixing it with jargon only
+            # buried the part that says what to do.
+            log.info("LOAD refused for %s: %s", link[:120], e)
+            return self._json(400, {"error": str(e)})
         except Exception as e:
             log.error("LOAD failed for %s\n%s", link[:120], traceback.format_exc())
             return self._json(400, {"error": f"Could not read PoB: {e}"})

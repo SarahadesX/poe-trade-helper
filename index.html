@@ -260,6 +260,9 @@
   .hide{display:none}
   .spin{color:var(--muted)}
   details summary{cursor:pointer;color:var(--muted);margin-top:10px}
+  /* A load error that explains what to do needs room to say it. */
+  .loaderr{line-height:1.65;margin-top:8px;padding:10px 12px;border-radius:8px;
+    border:1px solid #5a3823;background:rgba(120,60,30,.12);max-width:760px}
   /* Whole-set results, grouped into things she can act on. */
   .bandhead{margin:16px 0 6px;padding:7px 12px;border-radius:8px;
     font-weight:700;border:1px solid var(--line);background:#161310}
@@ -400,7 +403,9 @@ async function load(){
   }
   done();
   if(!d || d.error){
-    msg.innerHTML='<span class="err">'+esc((d&&d.error)||'No response')+stillThere+'</span>';
+    // These messages tell her what to do next, so keep their paragraphs.
+    msg.innerHTML='<div class="err loaderr">'+
+      esc((d&&d.error)||'No response').replace(/\n/g,'<br>')+esc(stillThere)+'</div>';
     return;
   }
   // Only now clear the old build off screen.
@@ -728,7 +733,12 @@ function renderStarter(){
     '<li>Click a build that looks fun.</li>'+
     '<li>Copy the whole web address from the top of your browser (Ctrl+C).</li>'+
     '<li>Paste it in the box above (Ctrl+V) and press <b>Load build</b>.</li>'+
-    '</ol></div></details></div>';
+    '</ol>'+
+    '<div style="margin-top:8px"><b>If a site refuses to load:</b> some build '+
+    'sites block other programs from reading them. Open the build in your '+
+    'browser, press its <b>Copy Path of Building code</b> (or Export) button, '+
+    'and paste that code into the box instead of the link — that always works.</div>'+
+    '</div></details></div>';
 }
 function openStarter(i){
   document.getElementById('link').value=STARTER_BUILDS[i][1]; load();
