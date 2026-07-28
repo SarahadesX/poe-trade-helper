@@ -240,11 +240,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "expected a JSON object"})
         try:
             return self._route_post(payload)
+        except (ConnectionError, BrokenPipeError):
+            return          # browser navigated away mid-request; nothing to do
         except Exception:
-            # Never drop the connection: the UI would spin forever with no clue.
+            # Never drop the connection silently: the UI would spin forever.
             log.error("POST %s failed\n%s", self.path, traceback.format_exc())
-            return self._json(500, {"error": "Something went wrong on the "
-                                    "server. See logs/errors.log."})
+            try:
+                return self._json(500, {"error": "Something went wrong on the "
+                                        "server. See logs/errors.log."})
+            except Exception:
+                return      # socket already gone
 
     def _route_post(self, payload):
         path = self.path.split("?", 1)[0]   # ignore any query string

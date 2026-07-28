@@ -20,7 +20,7 @@
     background-attachment:fixed;min-height:100vh}
   a{color:var(--gold2)}
   ::selection{background:rgba(200,170,110,.28)}
-  header{padding:14px 24px;display:flex;gap:14px;align-items:center;
+  header{padding:14px 20px;display:flex;gap:10px;align-items:center;
     flex-wrap:wrap;position:sticky;top:0;z-index:20;
     background:linear-gradient(180deg,rgba(20,17,13,.97),rgba(20,17,13,.88));
     border-bottom:1px solid var(--line);backdrop-filter:blur(8px);
@@ -37,7 +37,7 @@
   input[type=text]:focus,input[type=number]:focus,select:focus{outline:none;
     border-color:var(--gold);box-shadow:0 0 0 3px rgba(200,170,110,.13)}
   input[type=text]{flex:1;min-width:280px}
-  #league{flex:0 0 auto;min-width:150px;width:190px}
+  #league{flex:0 0 auto;min-width:130px;width:160px}
   input[type=checkbox]{accent-color:var(--gold);width:15px;height:15px;
     cursor:pointer}
   button{background:linear-gradient(180deg,#2a2419,#211c14);
@@ -59,7 +59,7 @@
   .tab.active{border-color:var(--gold);color:var(--gold2);
     background:linear-gradient(180deg,#2b2115,#231a10);
     box-shadow:0 2px 10px rgba(0,0,0,.3)}
-  .modetabs{display:flex;gap:10px;margin:22px 0 4px}
+  .modetabs{display:flex;gap:10px;margin:22px 0 4px;flex-wrap:wrap}
   .modetab{flex:0 0 auto;padding:12px 28px;border:1px solid var(--line);
     border-radius:12px;cursor:pointer;color:var(--muted);font-size:15px;
     font-weight:600;background:linear-gradient(180deg,#1d1a14,#171410);
@@ -118,6 +118,14 @@
   .tbig{color:var(--gold2);font-size:26px;font-weight:700;margin:4px 0}
   .tsub{color:var(--muted);font-size:14px;font-weight:400}
   .tnote{color:var(--muted);font-size:12px;margin-top:3px}
+  .starterbox{background:#161c28;border:1px solid #2c3a52;border-radius:10px;
+    padding:16px 18px;margin-top:14px;line-height:1.65}
+  .starterbox .bchip{cursor:pointer}
+  .buyhelp{margin-top:12px;background:#161c28;border:1px solid #2c3a52;
+    border-radius:8px;padding:10px 14px;font-size:13px;line-height:1.7}
+  .buyhelp summary{cursor:pointer;color:var(--blue);font-weight:600}
+  .buyhelp ol{margin:8px 0 4px;padding-left:20px}
+  .buyhelp li{margin-bottom:5px}
   .advtoggle{display:inline-flex;align-items:center;gap:6px;color:var(--muted);
     font-size:13px;cursor:pointer}
   .cmp-you{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
@@ -149,8 +157,8 @@
     system-ui,sans-serif;color:var(--text);background:#0b0a08;border:1px solid
     var(--line);border-radius:6px;padding:14px;max-height:560px;overflow:auto}
   .gembuy{cursor:pointer;color:var(--blue);font-size:11px;margin-left:6px;
-    opacity:0;transition:.12s}
-  .gemgroup:hover .gembuy{opacity:.85}
+    opacity:.7;transition:.12s}
+  .gemgroup:hover .gembuy{opacity:1}
   .gembuy:hover{color:var(--gold2)}
   .opts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:12px 0 2px;
     padding:10px 12px;background:var(--panel2);border:1px solid var(--line);
@@ -220,7 +228,8 @@
   .iimg.noart{display:flex;align-items:center;justify-content:center;
     border:1px dashed var(--line);border-radius:8px;color:var(--muted);
     font-size:20px;font-weight:700;background:rgba(0,0,0,.2)}
-  .islot.empty{opacity:.35;cursor:default;border-style:dashed}
+  .islot.sel{border-color:var(--gold);box-shadow:0 0 0 2px rgba(200,170,110,.35)}
+  .islot.empty{opacity:.6;cursor:default;border-style:dashed}
   .islot.empty:hover{transform:none;border-color:var(--line);box-shadow:none}
   .r-UNIQUE .in{color:#af6025}
   .r-RARE .in{color:#e6c98a}
@@ -256,13 +265,14 @@
 <body>
 <header>
   <h1>⚔ PoE Trade Helper</h1>
-  <span class="muted">Path of Building → literal-stat trade search</span>
+  <span class="muted">Turn a build guide into a shopping list</span>
   <span style="flex:1"></span>
   <label class="muted">League</label>
   <input id="league" list="leagueList" placeholder="League" autocomplete="off"
     title="Pick from the list or type the exact league name">
   <datalist id="leagueList"></datalist>
   <label class="advtoggle" title="Show live listings and compare them to your item, inside this app"><input type="checkbox" id="advChk" onchange="setAdv(this.checked)"> Advanced</label>
+  <button id="helpBtn" class="mini" onclick="showHowto()" title="Show the quick instructions again">Help</button>
   <button id="myGearBtn" onclick="toggleMyGear()">👤 My Gear</button>
 </header>
 
@@ -271,13 +281,14 @@
     <b>New here?</b> 1) Paste a build link and hit <b>Load build</b>.
     2) Pick <b>Gear</b>, <b>Skill Tree</b>, <b>Gems</b> or <b>Guide</b>.
     3) Click an item, then <b>Search</b> to buy it — or <b>Search whole set</b> for prices on everything.
-    <button class="howtox" onclick="dismissHowto()">Got it ✕</button>
+    <button class="howtox" onclick="dismissHowto()">Hide this</button>
   </div>
   <div class="row">
-    <input id="link" type="text" placeholder="Paste a maxroll.gg / mobalytics.gg build, pobb.in / pastebin link, or raw PoB code…">
+    <input id="link" type="text" placeholder="Paste a build guide link here (for example from maxroll.gg)">
     <button class="primary" id="loadBtn">Load build</button>
   </div>
   <div id="loadMsg" class="muted" style="margin-top:8px"></div>
+  <div id="starter" class="hide"></div>
 
   <div id="saved" class="saved"></div>
 
@@ -327,34 +338,47 @@ async function initLeagues(){
 document.getElementById('loadBtn').onclick = load;
 document.getElementById('link').addEventListener('keydown',e=>{if(e.key==='Enter')load();});
 
+let LOADING=false;
 async function load(){
+  if(LOADING) return;                    // ignore impatient double-clicks
   const link = document.getElementById('link').value.trim();
   const msg = document.getElementById('loadMsg');
-  if(!link){msg.textContent='Paste a PoB link or code first.';return;}
-  MYVIEW=false; document.getElementById('myGearBtn').classList.remove('active');
-  ['modeTabs','gearPanel','treePanel','gemPanel','notesPanel','myPanel','detail']
-    .forEach(id=>document.getElementById(id).classList.add('hide'));
-  document.getElementById('slots').innerHTML='';
+  const btn = document.getElementById('loadBtn');
+  if(!link){msg.innerHTML='<span class="err">Paste a build guide link in the box above first.</span>';return;}
+  // Note: the old build stays on screen until the new one actually arrives, so
+  // a failed load never leaves her staring at a blank page.
+  const kept = !!BUILD;
+  const stillThere = kept ? ' Your previous build is still open below.' : '';
+  LOADING=true; btn.disabled=true; btn.textContent='Loading…';
   const t0=Date.now();
   const tick=setInterval(()=>{
     msg.innerHTML='<span class="spin">Loading build… '+Math.round((Date.now()-t0)/1000)+'s</span>';
   },200);
+  const done=()=>{ LOADING=false; btn.disabled=false; btn.textContent='Load build'; clearInterval(tick); };
   let d;
   try{
     d = await api('/api/load',{link}, 90000);
   }catch(e){
-    clearInterval(tick);
-    msg.innerHTML='<span class="err">Timed out or network error'+
-      (e&&e.name==='AbortError'?' (90s)':'')+'. maxroll/PoE may be slow — try again. '+
-      'Details in logs/errors.log.</span>';
+    done();
+    msg.innerHTML='<span class="err">That took too long. The build site or Path '+
+      'of Exile may be busy — wait a moment and press Load build again.'+stillThere+'</span>';
     return;
   }
-  clearInterval(tick);
-  if(!d || d.error){msg.innerHTML='<span class="err">'+esc((d&&d.error)||'No response')+'</span>';return;}
-  BUILD=d; curSet=0; curItem=null; MODE=null; curGemSet=null; GEMICONS={};
+  done();
+  if(!d || d.error){
+    msg.innerHTML='<span class="err">'+esc((d&&d.error)||'No response')+stillThere+'</span>';
+    return;
+  }
+  // Only now clear the old build off screen.
+  MYVIEW=false; document.getElementById('myGearBtn').classList.remove('active');
+  ['myPanel','detail'].forEach(id=>document.getElementById(id).classList.add('hide'));
+  // Open the gear straight away -- landing on an empty page after a successful
+  // load made it look like nothing happened.
+  BUILD=d; curSet=0; curItem=null; MODE='gear'; curGemSet=null; GEMICONS={};
   ITEMICONS={};
-  msg.innerHTML='<span class="ok">Loaded in '+((Date.now()-t0)/1000).toFixed(1)+'s.</span> '+
-    '<span class="muted">Choose Gear, Skill Tree or Gems below.</span>';
+  msg.innerHTML='<span class="ok">Build loaded.</span> '+
+    '<span class="muted">The gear it uses is below — click any piece to find '+
+    'one for sale.</span>';
   renderTabs(); renderSlots(); renderJewels(); renderSetbar();
   showModeTabs(); renderMode();
   loadItemIcons();
@@ -375,7 +399,9 @@ function showModeTabs(){
     `<div class="modetab${MODE==='gems'?' active':''}" onclick="setMode('gems')">🔮 Gems${nG?' ('+nG+')':''}</div>`+
     (BUILD.notes?`<div class="modetab${MODE==='notes'?' active':''}" onclick="setMode('notes')">📖 Guide</div>`:'');
 }
-function setMode(m){ MODE = (MODE===m ? null : m); showModeTabs(); renderMode(); }
+// Never toggle a section closed: clicking the open tab again used to blank the
+// whole page, which reads as "the app broke".
+function setMode(m){ MODE = m; showModeTabs(); renderMode(); }
 function renderMode(){
   document.getElementById('gearPanel').classList.toggle('hide', MODE!=='gear');
   document.getElementById('treePanel').classList.toggle('hide', MODE!=='tree');
@@ -445,12 +471,12 @@ function renderGems(){
       const img=ic?`<img class="gemimg" src="${esc(ic)}" alt="" loading="lazy">`
                  :`<span class="gemimg ph">${esc((gm.name||'?').charAt(0))}</span>`;
       return `<div class="${cls}">${img}<span class="gemname">${esc(gm.name)}${badge}</span>`+
-             `<a class="gembuy" data-n="${esc(gm.name)}" data-s="${gm.support?1:0}" onclick="buyGem(this.dataset.n,this.dataset.s==='1')">buy ↗</a></div>`;
+             `<a class="gembuy" data-n="${esc(gm.name)}" data-s="${gm.support?1:0}" onclick="buyGem(this.dataset.n,this.dataset.s==='1')">Buy this gem ↗</a></div>`;
     }).join('');
     return `<div class="gemgroup">${gems}</div>`;
   }).join('');
   el.innerHTML='<div class="panel">'+setTabs+
-    '<div class="muted" style="margin:2px 0 2px">Active skills in gold, support gems below each:</div>'+
+    '<div class="muted" style="margin:2px 0 2px">Gold = the skills you actually use. The smaller ones underneath make that skill stronger. Most gems come free from quests — only buy one here if you cannot find it in game.</div>'+
     '<div class="gemgroups">'+groups+'</div></div>';
 }
 function renderTrees(){
@@ -482,6 +508,10 @@ async function buyGem(name, support){
 // ---- How-to banner ---------------------------------------------------------
 function dismissHowto(){ try{localStorage.setItem('poe_howto_done','1');}catch(e){}
   document.getElementById('howto').classList.add('hide'); }
+// Dismissing used to hide the only instructions in the app for good.
+function showHowto(){ try{localStorage.removeItem('poe_howto_done');}catch(e){}
+  const h=document.getElementById('howto'); h.classList.remove('hide');
+  try{ h.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){} }
 
 // ---- My Gear: your own character's equipped items (needs POESESSID) --------
 let MYVIEW=false, MYGEAR=[];
@@ -558,7 +588,7 @@ function renderMyGearGrid(){
   grid.innerHTML='<div class="ok" style="margin:6px 0 8px">✓ Found your gear — click any piece to search for an upgrade:</div>'+
     dollHtml(MYGEAR, 'pickMyGear');
 }
-function pickMyGear(i){ curItem=MYGEAR[i]; showDetail(); }
+function pickMyGear(i,ev){ curItem=MYGEAR[i]; showDetail(ev); }
 
 // ---- Saved builds (persisted server-side in saved_builds.txt) --------------
 let SAVED=[];
@@ -566,8 +596,40 @@ async function loadSaved(){
   try{ const d=await api('/api/builds'); SAVED=d.builds||[]; renderSaved(); }
   catch(e){}
 }
+
+// First-run help: without this the app is one empty box and a button, and a
+// beginner has no build link to paste and nowhere to get one.
+const STARTER_BUILDS=[
+  ['Winter Orb Elementalist (caster)','https://maxroll.gg/poe/build-guides/winter-orb-elementalist-league-starter'],
+  ['Holy Hammers Inquisitor (melee)','https://maxroll.gg/poe/build-guides/holy-hammers-inquisitor-league-starter'],
+];
+function renderStarter(){
+  const el=document.getElementById('starter');
+  if(BUILD || SAVED.length){ el.classList.add('hide'); el.innerHTML=''; return; }
+  el.classList.remove('hide');
+  el.innerHTML='<div class="starterbox">'+
+    '<div><b>What is a build?</b> It is someone else’s plan for your character — '+
+    'which gear to wear and which skills to use. This app turns that plan into a '+
+    'shopping list you can actually buy.</div>'+
+    '<div style="margin:10px 0 4px">Try one to see how it works:</div>'+
+    '<div class="saved">'+STARTER_BUILDS.map((b,i)=>
+      `<span class="bchip"><span class="bname" onclick="openStarter(${i})">${esc(b[0])}</span></span>`).join('')+
+    '</div>'+
+    '<details style="margin-top:12px"><summary>Where do I find my own build?</summary>'+
+    '<div class="mghelp" style="margin-top:6px"><ol>'+
+    '<li>Open <a href="https://maxroll.gg/poe/build-guides" target="_blank">maxroll.gg/poe/build-guides</a> '+
+    'or <a href="https://mobalytics.gg/poe/builds" target="_blank">mobalytics.gg/poe/builds</a>.</li>'+
+    '<li>Click a build that looks fun.</li>'+
+    '<li>Copy the whole web address from the top of your browser (Ctrl+C).</li>'+
+    '<li>Paste it in the box above (Ctrl+V) and press <b>Load build</b>.</li>'+
+    '</ol></div></details></div>';
+}
+function openStarter(i){
+  document.getElementById('link').value=STARTER_BUILDS[i][1]; load();
+}
 function renderSaved(){
   const el=document.getElementById('saved');
+  renderStarter();
   if(!SAVED.length){ el.innerHTML=''; return; }
   el.innerHTML='<span class="muted" style="align-self:center">Saved:</span>'+
     SAVED.map((b,i)=>`<span class="bchip">
@@ -640,7 +702,7 @@ function dollHtml(slots, picker){
   for(const [name,area,size] of DOLL){
     const hit=byName[name];
     if(hit) used.add(hit[1]);
-    doll+=itemCard(hit?hit[0]:null, hit?`${picker}(${hit[1]})`:'', size,
+    doll+=itemCard(hit?hit[0]:null, hit?`${picker}(${hit[1]},event)`:'', size,
                    {a:area,name});
   }
   let html='<div class="doll">'+doll+'</div>';
@@ -650,13 +712,13 @@ function dollHtml(slots, picker){
   flasks.forEach(([,i])=>used.add(i));
   if(flasks.length){
     html+='<div class="dollhead">Flasks</div><div class="dollrow">'+
-      flasks.map(([s,i])=>itemCard(s,`${picker}(${i})`,'small',{a:'auto'})).join('')+
+      flasks.map(([s,i])=>itemCard(s,`${picker}(${i},event)`,'small',{a:'auto'})).join('')+
       '</div>';
   }
   const rest=slots.map((s,i)=>[s,i]).filter(([,i])=>!used.has(i));
   if(rest.length){
     html+='<div class="dollhead">Other</div><div class="dollrow">'+
-      rest.map(([s,i])=>itemCard(s,`${picker}(${i})`,'small',{a:'auto'})).join('')+
+      rest.map(([s,i])=>itemCard(s,`${picker}(${i},event)`,'small',{a:'auto'})).join('')+
       '</div>';
   }
   return html;
@@ -666,10 +728,10 @@ function renderJewels(){
   const jw=(BUILD&&BUILD.jewels)||[];
   if(!jw.length){ el.innerHTML=''; return; }
   el.innerHTML='<div class="dollhead">Tree jewels ('+jw.length+')</div><div class="dollrow">'+
-    jw.map((s,i)=>itemCard(s,`pickJewel(${i})`,'small',{a:'auto'})).join('')+'</div>';
+    jw.map((s,i)=>itemCard(s,`pickJewel(${i},event)`,'small',{a:'auto'})).join('')+'</div>';
 }
-function pickSlot(i){ curItem=BUILD.item_sets[curSet].slots[i]; showDetail(); }
-function pickJewel(i){ curItem=BUILD.jewels[i]; showDetail(); }
+function pickSlot(i,ev){ curItem=BUILD.item_sets[curSet].slots[i]; showDetail(ev); }
+function pickJewel(i,ev){ curItem=BUILD.jewels[i]; showDetail(ev); }
 
 // Item/jewel base-type art (same RePoE map as gems: instant, no rate limits).
 let ITEMICONS={};
@@ -692,15 +754,15 @@ async function loadItemIcons(){
 // ---- Search whole set: one throttled search per item, links listed in-app --
 function renderSetbar(){
   document.getElementById('setbar').innerHTML=
-    `<button class="primary" onclick="doSearchSet()">🔍 Search whole set</button>
+    `<button class="primary" onclick="doSearchSet()">💰 Price everything</button>
      <label class="setopt"><input type="checkbox" ${SETJEWELS?'checked':''} onchange="SETJEWELS=this.checked"> tree jewels</label>
      <label class="setopt"><input type="checkbox" ${SETFLASKS?'checked':''} onchange="SETFLASKS=this.checked"> flasks</label>
-     <span class="setopt">Budget / item <input type="number" step="any" class="optin" id="setPrice" value="${BUDGET}" placeholder="none" style="width:60px">
+     <span class="setopt">Most to spend on one item <input type="number" step="any" class="optin" id="setPrice" value="${BUDGET}" placeholder="none" style="width:60px">
        <select class="optin" id="setCur">
          <option value="divine"${CURRENCY==='divine'?' selected':''}>div</option>
          <option value="chaos"${CURRENCY==='chaos'?' selected':''}>chaos</option>
        </select>
-       <span class="muted" style="font-size:12px">(pricier items turn red)</span></span>`;
+       <span class="muted" style="font-size:12px">(anything dearer turns red)</span></span>`;
 }
 function itemToSearch(s){
   return {slot:s.slot, item:{base:s.base,name:s.name,rarity:s.rarity,slot:s.slot},
@@ -764,11 +826,12 @@ function renderSetResults(res, meta){
            :`<span class="err" title="${esc(r.error||'')}">not found</span>`}
   </div>`).join('');
   document.getElementById('setResults').innerHTML='<div class="panel">'+
-    '<div class="totalbox"><div class="tlabel">Rough cost to buy this gear now</div>'+
+    '<div class="totalbox"><div class="tlabel">If you bought gear as good as the guide uses</div>'+
       '<div class="tbig">≈ '+totalText(meta)+'</div>'+
       (anyOver?'<div class="tnote"><span class="over-lbl">Red</span> = costs more than your budget of '+esc(BUDGET)+' '+esc(CURRENCY)+' — pricey pieces to save up for.</div>':'')+
       '<div class="tnote">Prices change all the time — this is only a guide. Click <b>Buy</b> to see live listings.</div>'+
-    '</div>'+
+      '<div class="tnote">You do not need all of this at once — start with one or two pieces.</div>'+
+    '</div>'+buyHelp()+
     '<div class="row" style="justify-content:space-between;margin:10px 0 6px">'+
       '<span class="muted">'+SET_URLS.length+' of '+res.length+' found</span>'+
       (SET_URLS.length?'<button class="primary" onclick="openAllSet()">Open all ↗</button>':'')+
@@ -776,19 +839,28 @@ function renderSetResults(res, meta){
 }
 function openAllSet(){ SET_URLS.forEach((u,i)=>setTimeout(()=>window.open(u,'_blank'), i*250)); }
 
-function showDetail(){
+function niceRarity(r){
+  return {UNIQUE:'Unique item',RARE:'Rare item',MAGIC:'Magic item',
+          NORMAL:'Basic item',GEM:'Skill gem'}[r] || r;
+}
+function markSelected(el){
+  document.querySelectorAll('.islot.sel').forEach(x=>x.classList.remove('sel'));
+  if(el) el.classList.add('sel');
+}
+function showDetail(ev){
   const s=curItem;
   const d=document.getElementById('detail');
   d.classList.remove('hide');
+  markSelected(ev && ev.currentTarget);
   const uniq = s.rarity==='UNIQUE';
   const rows = s.mods.map((m,idx)=>{
-    const tag = m.matched? '<span class="tag ok">stat ✓</span>'
-                         : '<span class="tag miss">no trade stat</span>';
+    const tag = m.matched? ''
+                         : '<span class="tag miss">the shop cannot search this one</span>';
     // Prefill every min with the PoB value (low end of a range) so you don't
     // have to type it — just raise it if you want a better roll. Clear = any.
     const pre = (m.matched && m.value!==null && m.value!==undefined) ? m.value : '';
     const minBox = m.matched
-      ? `<span class="minwrap">min <input type="number" step="any" class="mininput" value="${pre}" placeholder="any"></span>`
+      ? `<span class="minwrap">at least <input type="number" step="any" class="mininput" value="${pre}" placeholder="any"></span>`
       : '';
     return `<label class="modline ${m.matched?'':'no'}">
        <input type="checkbox" class="modcheck" data-line="${esc(m.line)}" ${m.matched?'checked':''} ${m.matched?'':'disabled'}>
@@ -799,13 +871,15 @@ function showDetail(){
     <div class="row" style="justify-content:space-between">
       <div><div class="sn muted">${esc(s.slot)}</div>
         <div class="in" style="font-size:17px;color:var(--gold2)">${esc(s.name||s.base)}</div>
-        <div class="ib muted">${esc(s.base)} · ${esc(s.rarity)}</div></div>
-      <button class="primary" onclick="doSearch()">🔍 Search PoE Trade</button>
+        <div class="ib muted">${esc(s.base)} · ${esc(niceRarity(s.rarity))}</div></div>
+      <button class="primary" onclick="doSearch()">🔍 Search the shop</button>
     </div>
-    <div style="margin:14px 0 4px" class="muted">Each <b>min</b> is pre-filled from the build — just hit search, or raise a value for a better roll (clear a box = any):</div>
+    <div style="margin:14px 0 4px" class="muted">These are the numbers this build wants, already filled in. Just press Search — or type a bigger number if you want a better version. An empty box means any number is fine.</div>
     <div>${rows||'<span class="muted">No mods.</span>'}</div>
-    ${uniq?'<label class="row" style="margin-top:10px"><input type="checkbox" id="useName" checked> match this unique by name</label>':''}
+    ${uniq?'<label class="row" style="margin-top:10px"><input type="checkbox" id="useName" checked> Only show this exact item (recommended)</label>':''}
     <div id="searchOut"></div>`;
+  // The panel sits below the gear, often off-screen: bring it to the user.
+  try{ d.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){ d.scrollIntoView(); }
 }
 
 // ---- Advanced mode (show + compare live listings inside the app) -----------
@@ -822,6 +896,19 @@ function gatherDetailMods(){
     mods.push({line:cb.dataset.line, min});
   }
   return mods;
+}
+function buyHelp(){
+  return '<details class="buyhelp"><summary>What do I do on that website?</summary>'+
+    '<ol>'+
+    '<li>Make sure you are logged in at pathofexile.com with the same account you play on.</li>'+
+    '<li>Each row is one seller. The cheapest are at the top.</li>'+
+    '<li>Click the speech-bubble (whisper) button on the row you want — it copies a message for you.</li>'+
+    '<li>Switch to Path of Exile, click the chat box, press Ctrl+V, then Enter.</li>'+
+    '<li>Wait for a party invite, accept it, then right-click their name and choose Visit Hideout.</li>'+
+    '<li>No reply after a few minutes is normal — go back and whisper the next seller.</li>'+
+    '</ol>'+
+    '<div class="muted">Everything here only shows fixed-price items, so the price you see is the price you pay.</div>'+
+    '</details>';
 }
 async function doSearch(){
   const s=curItem;
@@ -848,13 +935,18 @@ async function doSearch(){
   if(d.url){
     h+=`<div class="ok">✓ Search ready.</div>`;
     if(d.note){ h+=`<div class="muted" style="margin-top:6px">ⓘ ${esc(d.note)}</div>`; }
-    h+=`<div style="margin-top:8px"><a href="${d.url}" target="_blank"><button class="primary">Open in PoE Trade ↗</button></a></div>`;
-    window.open(d.url,'_blank');
+    h+=`<div style="margin-top:8px"><a href="${d.url}" target="_blank"><button class="primary">Open the shop ↗</button></a></div>`;
+    h+=buyHelp();
+    // Browsers block popups opened after an await, so never depend on it: if
+    // the tab doesn't open, the gold button above still works.
+    const w=window.open(d.url,'_blank');
+    if(!w||w.closed) h+='<div class="muted" style="margin-top:6px">Your browser '+
+      'blocked the new tab — press the gold button above.</div>';
   }else{
     h+=`<div class="err">Couldn't auto-create the search: ${esc(d.error||'')}</div>`;
   }
   if(d.skipped&&d.skipped.length){
-    h+='<details><summary>'+d.skipped.length+' mod(s) had no trade stat (skipped)</summary><pre>'+esc(d.skipped.join('\n'))+'</pre></details>';
+    h+='<details><summary>'+d.skipped.length+' line(s) the shop cannot search (skipped)</summary><pre>'+esc(d.skipped.join('\n'))+'</pre></details>';
   }
   h+='</div>';
   out.innerHTML=h;
@@ -908,6 +1000,7 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>(
 
 initLeagues();
 loadSaved();
+renderStarter();
 try{ if(!localStorage.getItem('poe_howto_done')) document.getElementById('howto').classList.remove('hide'); }catch(e){}
 try{ if(localStorage.getItem('poe_adv')){ ADV=true; document.getElementById('advChk').checked=true; } }catch(e){}
 
