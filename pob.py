@@ -195,8 +195,16 @@ def _parse_item_block(text: str):
         if sv:
             selected.add(sv.group(1))
 
-    mods = []
+    mods, kinds = [], []
+    # "Implicits: N" says the next N mod lines are the item's implicits. Trade
+    # files implicit, crafted and fractured mods under their OWN stat ids, so
+    # losing this makes us ask for an implicit as if it were a rolled explicit.
+    implicits_left = 0
     for ln in lines[idx:]:
+        im = re.match(r"Implicits:\s*(\d+)", ln)
+        if im:
+            implicits_left = int(im.group(1))
+            continue
         if ln.strip() in _META_EXACT:
             continue
         if _META_KEY_RE.match(ln) or any(ln.startswith(k) for k in _META_PREFIXES):
@@ -204,6 +212,7 @@ def _parse_item_block(text: str):
         vm = re.match(r"\{variant:([\d,]+)\}", ln)
         if vm and selected and not (set(vm.group(1).split(",")) & selected):
             continue  # a different version's roll -- skip it
+        tags = set(re.findall(r"\{([a-z_]+)[:}]", ln))
         # Strip PoB tag prefixes like {crafted}{range:0.5} and variant markers.
         clean = re.sub(r"^(\{[^}]*\})+", "", ln).strip()
         clean = re.sub(r"\{[^}]*\}", "", clean).strip()  # inline {tags}
@@ -213,8 +222,21 @@ def _parse_item_block(text: str):
         if ":" in clean and clean.split(":", 1)[0] in (
             "Variant", "Requires Level", "Requires Class"):
             continue
+        # Position wins over the tag: an implicit crafted by Eldritch currency
+        # is still filed under "implicit" on the trade site.
+        if implicits_left > 0:
+            kind = "implicit"
+            implicits_left -= 1
+        elif "crafted" in tags:
+            kind = "crafted"
+        elif "fractured" in tags:
+            kind = "fractured"
+        else:
+            kind = None
         mods.append(clean)
-    return {"name": name, "base": base, "rarity": rarity, "mods": mods}
+        kinds.append(kind)
+    return {"name": name, "base": base, "rarity": rarity, "mods": mods,
+            "kinds": kinds}
 
 
 def parse_build(link_or_code: str) -> dict:
@@ -258,6 +280,7 @@ def parse_build(link_or_code: str) -> dict:
                 "base": it["base"],
                 "rarity": it["rarity"],
                 "mods": it["mods"],
+                "kinds": it.get("kinds") or [],
             })
         if slots:
             sets.append({"title": title, "slots": slots})
@@ -308,7 +331,7 @@ def _parse_tree_jewels(root, items_by_id):
         seen.add(iid)
         jewels.append({"slot": "Tree Jewel", "name": it["name"],
                        "base": it["base"], "rarity": it["rarity"],
-                       "mods": it["mods"]})
+                       "mods": it["mods"], "kinds": it.get("kinds") or []})
     return jewels
 
 

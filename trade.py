@@ -177,6 +177,10 @@ def _weapon_category(b):
             "bow": "weapon.bow", "staff": "weapon.staff"}.get(last, "weapon")
 
 
+# Categories that can hold 4+ links. Staves and bows are the only weapon
+# classes that are ALWAYS two-handed, so they are the only safe weapon guess.
+_CAN_LINK = frozenset(("armour.chest", "weapon.staff", "weapon.bow"))
+
 # Gear slot (lowercased, checked as a prefix) -> trade Item Category.
 _SLOT_CATEGORY = (
     ("body armour", "armour.chest"), ("helmet", "armour.helmet"),
@@ -233,13 +237,26 @@ def build_query(item, specs, use_type=True, use_name=False, opts=None):
     EMPTY min box (so the user can type a threshold on the trade site).
     opts: {max_price, currency, corrupted, min_links} extra search filters.
     """
-    filters = []
+    # Trade adds up every mod on an item that matches one stat filter, and it
+    # ignores a repeat of the same id -- so two filters for one stat silently
+    # threw one requirement away. Merge them into a single filter asking for
+    # the combined total, which is what "this item or better" actually means.
+    order, merged = [], {}
     for sp in specs:
         if not sp or not sp.get("id"):
             continue
-        f = {"id": sp["id"], "disabled": False}
+        sid = sp["id"]
+        if sid not in merged:
+            order.append(sid)
+            merged[sid] = None
         if sp.get("min") is not None:
-            f["value"] = {"min": sp["min"]}
+            merged[sid] = (merged[sid] or 0) + sp["min"]
+    filters = []
+    for sid in order:
+        f = {"id": sid, "disabled": False}
+        if merged[sid] is not None:
+            v = merged[sid]
+            f["value"] = {"min": round(v, 2) if isinstance(v, float) else v}
         filters.append(f)
 
     query = {
@@ -292,7 +309,11 @@ def build_query(item, specs, use_type=True, use_name=False, opts=None):
             None, "") else None
     except (TypeError, ValueError):
         min_links = None
-    if min_links:
+    # Only ask for links where that many CAN exist. A 6-link filter on a ring
+    # matches nothing, which reads as "sold out" rather than "wrong filter".
+    # An unknown category keeps the filter: dropping what the user asked for
+    # is worse than an empty result they can see and explain.
+    if min_links and (not cat or cat in _CAN_LINK or min_links <= 3):
         fdict.setdefault("socket_filters", {}).setdefault("filters", {})[
             "links"] = {"min": min_links}
     if fdict:

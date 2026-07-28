@@ -41,6 +41,13 @@ def collapse_ranges(text: str) -> str:
 CTX_ARMOUR = "armour"   # helmet / body / gloves / boots / shield
 CTX_WEAPON = "weapon"   # anything you attack with
 
+# Mod kinds worth searching separately: only those that occupy a DIFFERENT
+# place on the item. An implicit is not interchangeable with a rolled mod, so
+# it needs its own id. A bench-crafted or fractured mod sits exactly where a
+# rolled one would and trade matches it with the explicit id -- narrowing
+# those to crafted.*/fractured.* would only hide equally good items.
+_SEARCHABLE_KINDS = frozenset(("implicit", "enchant"))
+
 # Matched against the NORMALISED text (numbers already replaced by '#').
 _LOCAL_BY_CTX = {
     CTX_ARMOUR: re.compile(
@@ -116,8 +123,9 @@ class StatIndex:
     """Normalised-text -> best matching stat entry."""
 
     def __init__(self):
-        self._map = {}
-        self._local = {}   # same key, but the "(Local)" spelling of the stat
+        self._map = {}     # key -> best-ranked global stat
+        self._local = {}   # key -> best-ranked "(Local)" spelling
+        self._all = {}     # (kind, is_local, key) -> that exact stat
         raw = _load_stats()
         for group in raw.get("result", []):
             gtype = group.get("id", "")  # e.g. "explicit"
@@ -127,51 +135,60 @@ class StatIndex:
                 if not sid or not text:
                     continue
                 etype = sid.split(".", 1)[0]  # id prefix is authoritative
-                key = normalise(text)
+                is_local = text.endswith(" (Local)")
+                key = normalise(text[:-len(" (Local)")] if is_local else text)
                 rank = _TYPE_RANK.get(etype, 5)
-                if text.endswith(" (Local)"):
-                    key = normalise(text[:-len(" (Local)")])
-                    cur = self._local.get(key)
-                    if cur is None or rank < cur["rank"]:
-                        self._local[key] = {"id": sid, "text": text,
-                                            "type": etype, "rank": rank}
-                    continue
-                cur = self._map.get(key)
+                rec = {"id": sid, "text": text, "type": etype, "rank": rank}
+                bucket = self._local if is_local else self._map
+                cur = bucket.get(key)
                 if cur is None or rank < cur["rank"]:
-                    self._map[key] = {"id": sid, "text": text,
-                                      "type": etype, "rank": rank}
+                    bucket[key] = rec
+                self._all.setdefault((etype, is_local, key), rec)
 
-    def _lookup(self, key, context):
-        """Local spelling first when the item kind calls for it, else global.
+    def _lookup(self, key, context=None, kind=None):
+        """Pick the stat id that matches how this mod sits on the item.
 
-        Some stats ("#% increased Armour and Energy Shield") exist ONLY in the
-        local spelling, so always fall back to it -- otherwise they'd stop
-        matching entirely whenever the item kind is unknown.
+        Two independent axes:
+          local  -- is it the item's own armour/damage, or a global bonus?
+          kind   -- implicit / crafted / fractured, each its own trade group.
+        Either may be unknown, and some stats exist in only one spelling, so
+        every step falls back rather than giving up (a wrong-but-close id
+        still finds items; no id at all silently drops the requirement).
         """
+        want_local = False
         if context:
             pat = _LOCAL_BY_CTX.get(context)
-            if pat and pat.match(key):
-                hit = self._local.get(key)
-                if hit:
-                    return hit
-        return self._map.get(key) or self._local.get(key)
+            want_local = bool(pat and pat.match(key))
+        order = (True, False) if want_local else (False, True)
+        if kind in _SEARCHABLE_KINDS:
+            for is_local in order:
+                rec = self._all.get((kind, is_local, key))
+                if rec:
+                    return rec
+        for is_local in order:
+            rec = (self._local if is_local else self._map).get(key)
+            if rec:
+                return rec
+        return None
 
-    def match(self, mod_line: str, context: str = None):
+    def match(self, mod_line: str, context: str = None, kind: str = None):
         """Return {id, text, value, matched_text} or None.
 
         context (CTX_ARMOUR / CTX_WEAPON) says what kind of item the line is
         printed on, so defence and weapon-damage lines resolve to the item's
         own "(Local)" stat rather than the global bonus of the same name.
+        kind ("implicit"/"crafted"/"fractured") says which trade stat group
+        the mod belongs to.
         """
         line = collapse_ranges(mod_line)
         key = normalise(line)
-        hit = self._lookup(key, context)
+        hit = self._lookup(key, context, kind)
         if not hit:
             # Retry without a trailing "(implicit)"/"(crafted)" style note.
             stripped = re.sub(r"\s*\([^)]*\)\s*$", "", line)
             if stripped != line:
                 key = normalise(stripped)
-                hit = self._lookup(key, context)
+                hit = self._lookup(key, context, kind)
         if not hit:
             return None
         nums = _NUM_RE.findall(line)

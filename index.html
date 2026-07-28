@@ -260,6 +260,36 @@
   .hide{display:none}
   .spin{color:var(--muted)}
   details summary{cursor:pointer;color:var(--muted);margin-top:10px}
+  /* Whole-set results, grouped into things she can act on. */
+  .bandhead{margin:16px 0 6px;padding:7px 12px;border-radius:8px;
+    font-weight:700;border:1px solid var(--line);background:#161310}
+  .bandhead.buy{color:#8fd18f;border-color:#33512f}
+  .bandhead.save{color:#e0b878;border-color:#5a4623}
+  .bandhead.none{color:#a09684}
+  .bandn{float:right;font-weight:400;color:var(--muted)}
+  .bandhint{font-weight:400;font-size:12px;color:var(--muted);margin-top:2px}
+  .setrow.pending{opacity:.6}
+  .stock{font-size:11px;padding:1px 7px;border-radius:9px;margin-left:7px;
+    border:1px solid var(--line);white-space:nowrap}
+  .stock.plenty{color:#8fd18f}
+  .stock.some{color:#d8c48a}
+  .stock.few{color:#e09a6a;border-color:#5a3823}
+  /* Her gear vs the build's, worst slot first. */
+  .cmpbox{border:1px solid var(--line);border-radius:10px;padding:12px;
+    background:#151310;margin-bottom:14px}
+  .cmptitle{font-weight:700;color:var(--gold2);font-size:16px}
+  .cmprow{display:grid;grid-template-columns:130px 1fr 1fr auto;gap:10px;
+    align-items:center;padding:9px 0;border-top:1px solid var(--line)}
+  .cmprow.first{background:rgba(200,170,110,.05)}
+  .cmpslot{font-size:13px;color:var(--muted)}
+  .cmpbadge{display:block;font-size:10px;color:#1a140a;background:var(--gold2);
+    border-radius:4px;padding:1px 5px;margin-bottom:3px;width:max-content}
+  .cmphead{font-size:11px;color:var(--muted)}
+  .cmpname{font-size:14px;color:#e8dcc4}
+  .cmpgap{grid-column:1/-1;font-size:12px;color:#c9b98f;line-height:1.7;
+    padding-left:2px}
+  @media(max-width:700px){.cmprow{grid-template-columns:1fr 1fr}
+    .cmpslot,.cmpact{grid-column:1/-1}}
   /* A search is running: show it, and make a second click obviously a no-op. */
   body.busy{cursor:progress}
   body.busy button.primary,body.busy .gembuy{opacity:.55;cursor:progress}
@@ -316,6 +346,7 @@
 let BUILD=null, curSet=0, curItem=null;
 let BUDGET='', CURRENCY='divine';   // remembered across searches
 let SETJEWELS=true, SETFLASKS=false, SET_URLS=[];
+let SETROWS=[], SETMETA={};   // whole-set results, filled in as they stream
 
 async function api(path, body, timeoutMs){
   const ctrl = new AbortController();
@@ -590,9 +621,80 @@ function renderMyGearGrid(){
   const grid=document.getElementById('myGearGrid');
   if(!grid || !MYGEAR.length) return;
   grid.innerHTML='<div class="ok" style="margin:6px 0 8px">✓ Found your gear — click any piece to search for an upgrade:</div>'+
+    compareHtml()+
     dollHtml(MYGEAR, 'pickMyGear');
 }
 function pickMyGear(i,ev){ curItem=MYGEAR[i]; showDetail(ev); }
+
+// ---- Which slot to fix first -----------------------------------------------
+// Her gear on its own doesn't tell her anything. Lined up against the build,
+// it does: every stat the guide asks for that her item doesn't have (or has
+// less of) is one concrete thing to go buy.
+function slotKey(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); }
+function myItemFor(slot){
+  const k=slotKey(slot);
+  return MYGEAR.find(m=>slotKey(m.slot)===k) || null;
+}
+function compareSlot(want, mine){
+  // Compare on trade stat id, so wording differences don't count as missing.
+  const have={};
+  for(const m of ((mine&&mine.mods)||[])) if(m.id) have[m.id]=Math.max(have[m.id]||0, m.value||0);
+  const gaps=[];
+  for(const m of (want.mods||[])){
+    if(!m.matched || !m.id) continue;
+    const need=(m.value===null||m.value===undefined)?null:m.value;
+    const got=have[m.id];
+    if(got===undefined) gaps.push({line:m.line, need, got:null});
+    else if(need!==null && got<need) gaps.push({line:m.line, need, got});
+  }
+  return gaps;
+}
+function compareHtml(){
+  if(!BUILD||!BUILD.item_sets||!BUILD.item_sets.length)
+    return '<div class="mghelp" style="margin-bottom:12px">Load a build at the top of the page '+
+           'and this will show you which piece to replace first.</div>';
+  const wants=BUILD.item_sets[curSet].slots.filter(s=>!/flask/i.test(s.slot));
+  const rows=[];
+  for(const w of wants){
+    const mine=myItemFor(w.slot);
+    const gaps=mine?compareSlot(w,mine):null;
+    rows.push({slot:w.slot, want:w, mine, gaps,
+               score: mine ? (gaps.length) : 999});   // empty slot = worst
+  }
+  rows.sort((a,b)=>b.score-a.score);
+  const worth=rows.filter(r=>r.score>0);
+  if(!worth.length) return '<div class="ok" style="margin-bottom:12px">'+
+    'Your gear already covers everything this build asks for. Nice.</div>';
+  const html=worth.slice(0,4).map((r,n)=>{
+    const gapTxt = !r.mine
+      ? '<div class="cmpgap">You have nothing in this slot.</div>'
+      : '<div class="cmpgap">'+r.gaps.slice(0,4).map(g=>
+          '<div>· '+esc(niceStat(g.line))+' — '+
+          (g.got===null?'<b>missing</b>':'yours is '+statNum(g.got)+', guide wants '+statNum(g.need))+
+          '</div>').join('')+
+          (r.gaps.length>4?'<div class="muted">+'+(r.gaps.length-4)+' more</div>':'')+'</div>';
+    return `<div class="cmprow${n===0?' first':''}">
+      <div class="cmpslot">${n===0?'<span class="cmpbadge">fix this first</span>':''}${esc(r.slot)}</div>
+      <div class="cmpcol"><div class="cmphead">Yours</div>
+        <div class="cmpname">${r.mine?esc(r.mine.name||r.mine.base):'<span class="muted">empty</span>'}</div></div>
+      <div class="cmpcol"><div class="cmphead">The guide uses</div>
+        <div class="cmpname">${esc(r.want.name||r.want.base)}</div></div>
+      <div class="cmpact"><button class="mini" onclick="findForSlot('${esc(r.slot)}')">Find one ↗</button></div>
+      ${gapTxt}</div>`;
+  }).join('');
+  return '<div class="cmpbox"><div class="cmptitle">What to upgrade next</div>'+
+    '<div class="muted" style="font-size:12px;margin-bottom:8px">Compared with '+
+    esc(BUILD.item_sets[curSet].title)+'. The slot missing the most is first.</div>'+
+    html+'</div>';
+}
+function findForSlot(slot){
+  const w=(BUILD.item_sets[curSet].slots||[]).find(s=>slotKey(s.slot)===slotKey(slot));
+  if(!w) return;
+  curItem=w; showDetail(null);
+  const d=document.getElementById('detail');
+  d.classList.remove('hide');
+  try{ d.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){}
+}
 
 // ---- Saved builds (persisted server-side in saved_builds.txt) --------------
 let SAVED=[];
@@ -769,6 +871,7 @@ async function loadItemIcons(){
 }
 
 // ---- Search whole set: one throttled search per item, links listed in-app --
+let SETHIDE=false, SET6L=false, SETCORRUPT=false;
 function renderSetbar(){
   document.getElementById('setbar').innerHTML=
     `<button class="primary" onclick="doSearchSet()">💰 Price everything</button>
@@ -778,12 +881,22 @@ function renderSetbar(){
        <select class="optin" id="setCur">
          <option value="divine"${CURRENCY==='divine'?' selected':''}>div</option>
          <option value="chaos"${CURRENCY==='chaos'?' selected':''}>chaos</option>
-       </select>
-       <span class="muted" style="font-size:12px">(anything dearer turns red)</span></span>`;
+       </select></span>
+     <label class="setopt" title="Leaves out anything dearer than your budget instead of just colouring it red."><input type="checkbox" ${SETHIDE?'checked':''} onchange="SETHIDE=this.checked"> only show what I can afford</label>
+     <label class="setopt" title="Body armour, staves and bows only — nothing else can have 6 links."><input type="checkbox" ${SET6L?'checked':''} onchange="SET6L=this.checked"> 6-linked only</label>
+     <label class="setopt" title="Corrupted items cannot be changed later, but are often cheaper."><input type="checkbox" ${SETCORRUPT?'checked':''} onchange="SETCORRUPT=this.checked"> include corrupted</label>`;
+}
+function setOpts(){
+  const o={};
+  if(SETHIDE && BUDGET){ o.max_price=BUDGET; o.currency=CURRENCY; }
+  if(SET6L) o.min_links=6;
+  // Unticked means "hide corrupted"; ticked means "don't care" (no filter).
+  if(!SETCORRUPT) o.corrupted='false';
+  return o;
 }
 function itemToSearch(s){
   return {slot:s.slot, item:{base:s.base,name:s.name,rarity:s.rarity,slot:s.slot},
-    mods:s.mods.filter(m=>m.matched).map(m=>({line:m.line,min:m.value})),
+    mods:s.mods.filter(m=>m.matched).map(m=>({line:m.line,min:m.value,kind:m.kind})),
     use_name:s.rarity==='UNIQUE'};
 }
 function gatherSetItems(){
@@ -814,18 +927,67 @@ window.doSearchSet=guard(async function(){
   if(!items.length){ el.innerHTML='<div class="panel muted">Nothing to search.</div>'; return; }
   BUDGET=(document.getElementById('setPrice')||{}).value||'';
   CURRENCY=(document.getElementById('setCur')||{}).value||'divine';
-  const t0=Date.now(), est=Math.ceil(items.length*1.2);
-  const tick=setInterval(()=>{
-    el.innerHTML='<div class="panel"><span class="spin">Finding each item and checking prices… '+
-      Math.round((Date.now()-t0)/1000)+'s of about '+est+'s. Please wait.</span></div>';
-  },300);
-  let d;
-  try{ d=await api('/api/searchset',{items, budget:BUDGET, budget_currency:CURRENCY,
-        league:document.getElementById('league').value}, 240000); }
-  catch(e){ clearInterval(tick); el.innerHTML='<div class="panel err">Timed out — try again.</div>'; return; }
-  clearInterval(tick);
-  renderSetResults((d&&d.results)||[], d||{});
+  // Placeholder rows up front, filled in as each answer arrives. Staring at a
+  // blank panel for 20 seconds looked like the button had done nothing.
+  SETROWS=items.map(it=>({slot:it.slot, name:(it.item.name||it.item.base),
+                          pending:true, url:null, error:null, price:null,
+                          over:false, count:0}));
+  SETMETA={}; renderSetResults(SETROWS, SETMETA, true);
+  let done=0;
+  try{
+    await streamNdjson('/api/searchset',
+      {items, budget:BUDGET, budget_currency:CURRENCY, opts:setOpts(),
+       league:document.getElementById('league').value},
+      msg=>{
+        if(msg.type==='row'){
+          SETROWS[msg.index]=msg.result; done++;
+          renderSetResults(SETROWS, SETMETA, true);
+        }else if(msg.type==='done'){
+          SETMETA=msg; renderSetResults(SETROWS, SETMETA, false);
+        }
+      });
+  }catch(e){
+    SETROWS.forEach(r=>{ if(r.pending){ r.pending=false;
+      r.error='Stopped before we got to this one — press the button again.'; }});
+    renderSetResults(SETROWS, SETMETA, false);
+    return;
+  }
+  // Stream ended without a "done" record (server died / tab throttled).
+  if(SETROWS.some(r=>r.pending)){
+    SETROWS.forEach(r=>{ if(r.pending){ r.pending=false;
+      r.error='Stopped before we got to this one — press the button again.'; }});
+    renderSetResults(SETROWS, SETMETA, false);
+  }
 });
+// Read a newline-delimited-JSON response, handing over each record as it lands.
+// The timeout is per-record, not for the whole call: a 16-item sweep is meant
+// to take a while, but silence means something died and we must not leave the
+// buttons locked forever waiting for it.
+async function streamNdjson(path, body, onMessage, idleMs){
+  idleMs = idleMs || 90000;
+  const ctrl=new AbortController();
+  let timer=setTimeout(()=>ctrl.abort(), idleMs);
+  const bump=()=>{ clearTimeout(timer); timer=setTimeout(()=>ctrl.abort(), idleMs); };
+  try{
+    const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},
+                             body:JSON.stringify(body), signal:ctrl.signal});
+    if(!r.ok || !r.body) throw new Error('stream failed');
+    const reader=r.body.getReader(), dec=new TextDecoder();
+    let buf='';
+    for(;;){
+      const {value,done}=await reader.read();
+      if(done) break;
+      bump();
+      buf+=dec.decode(value,{stream:true});
+      let i;
+      while((i=buf.indexOf('\n'))>=0){
+        const line=buf.slice(0,i).trim(); buf=buf.slice(i+1);
+        if(line) try{ onMessage(JSON.parse(line)); }catch(e){}
+      }
+    }
+    if(buf.trim()) try{ onMessage(JSON.parse(buf.trim())); }catch(e){}
+  } finally { clearTimeout(timer); }
+}
 function fmtPrice(p){
   if(!p) return '<span class="muted">no price</span>';
   const c=p.currency.charAt(0).toUpperCase()+p.currency.slice(1);
@@ -845,27 +1007,71 @@ function totalText(meta){
   return keys.map(c=>{const v=totals[c]; const amt=(v%1===0)?v:v.toFixed(1);
     return '<b>'+amt+'</b> '+c.charAt(0).toUpperCase()+c.slice(1);}).join('  +  ');
 }
-function renderSetResults(res, meta){
-  SET_URLS=res.filter(r=>r.url).map(r=>r.url);
-  const anyOver=res.some(r=>r.over);
-  const rows=res.map(r=>`<div class="setrow${r.over?' over':''}">
+// How many sellers have one. A 5-listing result and a 5000-listing result
+// used to look identical, so there was no way to tell "rare and contested"
+// from "everyone has one".
+function stockText(n){
+  if(!n) return '';
+  if(n>=1000) return '<span class="stock plenty">plenty for sale</span>';
+  if(n>=100)  return '<span class="stock plenty">'+n+' for sale</span>';
+  if(n>=20)   return '<span class="stock some">'+n+' for sale</span>';
+  return '<span class="stock few">only '+n+' for sale</span>';
+}
+// Three buckets she can act on, instead of one flat list.
+const BANDS=[
+  {key:'buy',  title:'Buy these now',
+   hint:'Found, and within your budget.'},
+  {key:'save', title:'Save up for these',
+   hint:'Found, but dearer than your budget — get them later.'},
+  {key:'none', title:'Not on sale right now',
+   hint:'Nobody is selling one matching the guide. Try again another day, or buy a weaker version in game.'},
+];
+function bandOf(r){
+  if(r.pending) return 'pending';
+  if(!r.url) return 'none';
+  if(!r.price) return 'none';
+  return r.over ? 'save' : 'buy';
+}
+function setRowHtml(r){
+  if(r.pending) return `<div class="setrow pending">
     <span class="sr-slot">${esc(r.slot)}</span>
     <span class="sr-name">${esc(r.name)}</span>
+    <span class="sr-price spin">checking…</span><span></span></div>`;
+  return `<div class="setrow${r.over?' over':''}">
+    <span class="sr-slot">${esc(r.slot)}</span>
+    <span class="sr-name">${esc(r.name)} ${stockText(r.count)}</span>
     <span class="sr-price">${fmtPrice(r.price)}${r.over?' <span class="over-lbl">over budget</span>':''}</span>
     ${r.url?`<a href="${esc(r.url)}" target="_blank"><button class="mini">Buy ↗</button></a>`
-           :`<span class="err" title="${esc(r.error||'')}">not found</span>`}
-  </div>`).join('');
+           :`<span class="err" title="${esc(r.error||'')}">${esc(r.error?'could not check':'none for sale')}</span>`}
+  </div>`;
+}
+function renderSetResults(res, meta, running){
+  SET_URLS=res.filter(r=>r.url).map(r=>r.url);
+  const anyOver=res.some(r=>r.over);
+  const pend=res.filter(r=>r.pending);
+  let body='';
+  if(pend.length) body+='<div class="bandhead">Still checking ('+pend.length+' left)</div>'
+                        +pend.map(setRowHtml).join('');
+  for(const b of BANDS){
+    const rows=res.filter(r=>bandOf(r)===b.key);
+    if(!rows.length) continue;
+    body+=`<div class="bandhead ${b.key}">${b.title} <span class="bandn">${rows.length}</span>`
+        + `<div class="bandhint">${b.hint}</div></div>`
+        + rows.map(setRowHtml).join('');
+  }
+  const done=res.length-pend.length;
   document.getElementById('setResults').innerHTML='<div class="panel">'+
     '<div class="totalbox"><div class="tlabel">If you bought gear as good as the guide uses</div>'+
-      '<div class="tbig">≈ '+totalText(meta)+'</div>'+
+      '<div class="tbig">'+(running?'<span class="spin">adding up… '+done+' of '+res.length+' checked</span>'
+                                   :'≈ '+totalText(meta))+'</div>'+
       (anyOver?'<div class="tnote"><span class="over-lbl">Red</span> = costs more than your budget of '+esc(BUDGET)+' '+esc(CURRENCY)+' — pricey pieces to save up for.</div>':'')+
       '<div class="tnote">Prices change all the time — this is only a guide. Click <b>Buy</b> to see live listings.</div>'+
       '<div class="tnote">You do not need all of this at once — start with one or two pieces.</div>'+
     '</div>'+buyHelp()+
     '<div class="row" style="justify-content:space-between;margin:10px 0 6px">'+
       '<span class="muted">'+SET_URLS.length+' of '+res.length+' found</span>'+
-      (SET_URLS.length?'<button class="primary" onclick="openAllSet()">Open all ↗</button>':'')+
-    '</div>'+rows+'</div>';
+      (SET_URLS.length&&!running?'<button class="primary" onclick="openAllSet()">Open all ↗</button>':'')+
+    '</div>'+body+'</div>';
 }
 function openAllSet(){ SET_URLS.forEach((u,i)=>setTimeout(()=>window.open(u,'_blank'), i*250)); }
 
@@ -893,7 +1099,7 @@ function showDetail(ev){
       ? `<span class="minwrap">at least <input type="number" step="any" class="mininput" value="${pre}" placeholder="any"></span>`
       : '';
     return `<label class="modline ${m.matched?'':'no'}">
-       <input type="checkbox" class="modcheck" data-line="${esc(m.line)}" ${m.matched?'checked':''} ${m.matched?'':'disabled'}>
+       <input type="checkbox" class="modcheck" data-line="${esc(m.line)}" data-kind="${esc(m.kind||'')}" ${m.matched?'checked':''} ${m.matched?'':'disabled'}>
        <span class="mtxt">${esc(m.line)} ${tag}</span>
        ${minBox}</label>`;
   }).join('');
@@ -923,7 +1129,7 @@ function gatherDetailMods(){
     const mi=row.querySelector('.mininput');
     let min=null;
     if(mi && mi.value.trim()!==''){ const n=parseFloat(mi.value); if(!isNaN(n)) min=n; }
-    mods.push({line:cb.dataset.line, min});
+    mods.push({line:cb.dataset.line, min, kind:cb.dataset.kind||null});
   }
   return mods;
 }

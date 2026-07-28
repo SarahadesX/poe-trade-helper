@@ -69,12 +69,18 @@ def _stat_context(item):
     return None
 
 
-def _enrich(idx, lines, context=None):
-    """Annotate each mod line with its matched trade stat id + value."""
+def _enrich(idx, lines, context=None, kinds=None):
+    """Annotate each mod line with its matched trade stat id + value.
+
+    kinds is the parallel implicit/crafted/fractured list from the PoB parse;
+    it travels with each mod so the search sends the same id the preview did.
+    """
+    kinds = kinds or []
     out = []
-    for line in lines:
-        m = idx.match(line, context)
-        out.append({"line": line, "matched": bool(m),
+    for i, line in enumerate(lines):
+        kind = kinds[i] if i < len(kinds) else None
+        m = idx.match(line, context, kind)
+        out.append({"line": line, "matched": bool(m), "kind": kind,
                     "value": (m["value"] if m else None),
                     "id": (m["id"] if m else None)})
     return out
@@ -327,11 +333,13 @@ class Handler(BaseHTTPRequestHandler):
                                     "See logs/errors.log (check your connection)."})
         for iset in build["item_sets"]:
             for slot in iset["slots"]:
-                slot["mods"] = _enrich(idx, slot["mods"], _stat_context(slot))
+                slot["mods"] = _enrich(idx, slot["mods"],
+                                       _stat_context(slot), slot.pop("kinds", None))
         # Tree jewels go through the same detail/search UI, so they need the
         # same enrichment -- otherwise every jewel search drops its stats.
         for jewel in build.get("jewels") or []:
-            jewel["mods"] = _enrich(idx, jewel["mods"], _stat_context(jewel))
+            jewel["mods"] = _enrich(idx, jewel["mods"],
+                                    _stat_context(jewel), jewel.pop("kinds", None))
         log.info("LOAD done in %.2fs total", time.time() - t0)
         self._json(200, build)
 
@@ -366,7 +374,8 @@ class Handler(BaseHTTPRequestHandler):
                 line, minv = entry.get("line", ""), entry.get("min")
             else:
                 line, minv = entry, None
-            m = idx.match(line, ctx)
+            kind = entry.get("kind") if isinstance(entry, dict) else None
+            m = idx.match(line, ctx, kind)
             if not m:
                 skipped.append(line)
                 continue
@@ -405,7 +414,8 @@ class Handler(BaseHTTPRequestHandler):
         for entry in (payload.get("mods") or []):
             line = entry.get("line", "") if isinstance(entry, dict) else entry
             minv = entry.get("min") if isinstance(entry, dict) else None
-            m = idx.match(line, ctx)
+            kind = entry.get("kind") if isinstance(entry, dict) else None
+            m = idx.match(line, ctx, kind)
             if m:
                 specs.append({"id": m["id"], "min": minv})
         query = trade.build_query(item, specs, use_type=True, use_name=use_name)
@@ -423,14 +433,38 @@ class Handler(BaseHTTPRequestHandler):
                  if res.get("note") else "")
         self._json(200, res)
 
+    def _stream_open(self):
+        """Start a newline-delimited-JSON response.
+
+        No Content-Length: the handler speaks HTTP/1.0, so the browser reads
+        until the connection closes. That lets each item's result reach the
+        page the moment it is known instead of after the whole sweep.
+        """
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+
+    def _stream_write(self, obj):
+        """Send one record. Returns False once the browser has gone away."""
+        try:
+            self.wfile.write((json.dumps(obj) + "\n").encode("utf-8"))
+            self.wfile.flush()
+            return True
+        except Exception:
+            return False
+
     def _handle_searchset(self, payload):
-        """One throttled trade search per item; fetch each cheapest price,
-        convert to chaos (via divine rate) for a total, and flag items whose
-        price exceeds the per-item budget."""
+        """One throttled trade search per item, streamed back as each finishes.
+
+        Prices are converted to chaos (via the divine rate) for a running
+        total, and items above the per-item budget are flagged.
+        """
         items = payload.get("items") or []
         league = (payload.get("league") or _load_config()["league"]).strip()
         idx = stats.get_index()
         sess = _load_config().get("poesessid", "")
+        opts = payload.get("opts") or {}
         rate = trade.get_divine_rate(league)
         ratemap = {"chaos": 1.0}
         if rate:
@@ -449,22 +483,51 @@ class Handler(BaseHTTPRequestHandler):
         budget_chaos = (to_chaos(budget_amt, budget_cur)
                         if budget_amt is not None else None)
 
-        log.info("SEARCHSET: %d items, league=%s, budget=%s", len(items),
-                 league, budget_chaos)
-        results, totals, total_chaos, unconvertible = [], {}, 0.0, False
+        log.info("SEARCHSET: %d items, league=%s, budget=%s, opts=%s",
+                 len(items), league, budget_chaos, opts or "{}")
+        self._stream_open()
+        if not self._stream_write({"type": "start", "count": len(items),
+                                   "divine_rate": rate}):
+            return
+        totals, total_chaos, unconvertible, ok = {}, 0.0, False, 0
+
+        def row(it, **kw):
+            itm = it.get("item") or {}
+            base = {"slot": it.get("slot", ""),
+                    "name": itm.get("name") or itm.get("base", ""),
+                    "url": None, "error": None, "price": None, "over": False,
+                    "count": 0}
+            base.update(kw)
+            return base
+
         for n, it in enumerate(items):
             itm = it.get("item") or {}
-            ctx = _stat_context(itm)
-            specs = []
-            for entry in (it.get("mods") or []):
-                line = entry.get("line", "") if isinstance(entry, dict) else entry
-                minv = entry.get("min") if isinstance(entry, dict) else None
-                m = idx.match(line, ctx)
-                if m:
-                    specs.append({"id": m["id"], "min": minv})
-            query = trade.build_query(itm, specs, use_type=True,
-                                      use_name=bool(it.get("use_name")))
-            res = trade.search_and_price(query, league, sess)
+            try:
+                ctx = _stat_context(itm)
+                specs = []
+                for entry in (it.get("mods") or []):
+                    if isinstance(entry, dict):
+                        line, minv = entry.get("line", ""), entry.get("min")
+                        kind = entry.get("kind")
+                    else:
+                        line, minv, kind = entry, None, None
+                    m = idx.match(line, ctx, kind)
+                    if m:
+                        specs.append({"id": m["id"], "min": minv})
+                query = trade.build_query(itm, specs, use_type=True,
+                                          use_name=bool(it.get("use_name")),
+                                          opts=opts)
+                res = trade.search_and_price(query, league, sess)
+            except Exception:
+                # One bad item must not kill the other fifteen.
+                log.error("SEARCHSET item %s failed\n%s",
+                          itm.get("base"), traceback.format_exc())
+                if not self._stream_write({"type": "row", "index": n, "result":
+                                           row(it, error="Could not search for "
+                                               "this one. See logs/errors.log.")}):
+                    return
+                continue
+
             price, over = res.get("price"), False
             if price:
                 totals[price["currency"]] = round(
@@ -476,34 +539,33 @@ class Handler(BaseHTTPRequestHandler):
                         over = True
                 else:
                     unconvertible = True
-            results.append({"slot": it.get("slot", ""),
-                            "name": itm.get("name") or itm.get("base", ""),
-                            "url": res["url"], "error": res["error"],
-                            "price": price, "over": over,
-                            "count": res.get("count", 0)})
+            if res["url"]:
+                ok += 1
+            if not self._stream_write({"type": "row", "index": n, "result": row(
+                    it, url=res["url"], error=res["error"], price=price,
+                    over=over, count=res.get("count", 0))}):
+                return      # tab closed mid-sweep
+
             # A long ban means every remaining request would be refused (and
             # each attempt extends it). Stop, and say so on the rows we never
             # got to, instead of repeating the same error 15 more times.
             left = trade.rate_limited_for()
             if left > trade.RIDE_OUT:
                 log.info("SEARCHSET stopped early: rate limited for %.0fs", left)
-                for rest in items[n + 1:]:
-                    ri = rest.get("item") or {}
-                    results.append({
-                        "slot": rest.get("slot", ""),
-                        "name": ri.get("name") or ri.get("base", ""),
-                        "url": None, "price": None, "over": False, "count": 0,
-                        "error": "Not checked yet — "
-                                 + trade.rate_limit_message(left)})
+                msg = "Not checked yet — " + trade.rate_limit_message(left)
+                for k, rest in enumerate(items[n + 1:], start=n + 1):
+                    if not self._stream_write({"type": "row", "index": k,
+                                               "result": row(rest, error=msg)}):
+                        return
                 break
             if n < len(items) - 1:
                 time.sleep(0.6)  # throttle
-        ok = sum(1 for r in results if r["url"])
-        log.info("SEARCHSET done: %d/%d ok, ~%.0f chaos", ok, len(results),
+        log.info("SEARCHSET done: %d/%d ok, ~%.0f chaos", ok, len(items),
                  total_chaos)
-        self._json(200, {"results": results, "totals": totals,
-                         "total_chaos": round(total_chaos, 1),
-                         "divine_rate": rate, "unconvertible": unconvertible})
+        self._stream_write({"type": "done", "totals": totals,
+                            "total_chaos": round(total_chaos, 1),
+                            "divine_rate": rate,
+                            "unconvertible": unconvertible})
 
 
 def _prewarm():
