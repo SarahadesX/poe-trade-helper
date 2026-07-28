@@ -152,8 +152,6 @@
     opacity:0;transition:.12s}
   .gemgroup:hover .gembuy{opacity:.85}
   .gembuy:hover{color:var(--gold2)}
-  .jewelhead{margin:16px 0 6px;color:var(--gold);font-size:12px;
-    text-transform:uppercase;letter-spacing:.5px}
   .opts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:12px 0 2px;
     padding:10px 12px;background:var(--panel2);border:1px solid var(--line);
     border-radius:8px;font-size:13px;color:var(--muted)}
@@ -179,26 +177,6 @@
   .bchip .bx:hover{opacity:1;border-color:var(--gold);color:var(--gold2)}
   .bchip .bx.del:hover{border-color:var(--bad);color:var(--bad);
     background:rgba(201,106,90,.18)}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));
-    gap:11px;margin-top:12px}
-  .slot{background:linear-gradient(180deg,#1e1a14,#171410);
-    border:1px solid var(--line);border-radius:10px;padding:11px 13px;
-    cursor:pointer;position:relative;overflow:hidden;
-    transition:transform .12s, border-color .15s, box-shadow .15s}
-  .slot::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
-    background:var(--line);transition:background .15s}
-  .slot:hover{border-color:var(--gold);transform:translateY(-2px);
-    box-shadow:var(--shadow)}
-  .slot:hover::before{background:var(--gold)}
-  .slot.r-UNIQUE::before{background:#af6025}
-  .slot.r-RARE::before{background:#c9b458}
-  .slot.r-MAGIC::before{background:#6a6aff}
-  .slot .sn{font-size:11px;color:var(--muted);text-transform:uppercase;
-    letter-spacing:.5px}
-  .slotbody{display:flex;gap:9px;align-items:flex-start;margin-top:4px}
-  .slotimg{width:38px;height:38px;flex:0 0 auto;object-fit:contain;
-    border-radius:5px;background:rgba(0,0,0,.28)}
-  .slottext{min-width:0;flex:1}
 
   /* ---- RPG paper-doll gear layout ---- */
   .doll{display:grid;gap:10px;margin-top:14px;
@@ -244,8 +222,6 @@
     font-size:20px;font-weight:700;background:rgba(0,0,0,.2)}
   .islot.empty{opacity:.35;cursor:default;border-style:dashed}
   .islot.empty:hover{transform:none;border-color:var(--line);box-shadow:none}
-  .slot .in{color:var(--gold2);font-weight:600}
-  .slot .ib{font-size:12px;color:var(--muted)}
   .r-UNIQUE .in{color:#af6025}
   .r-RARE .in{color:#e6c98a}
   .r-MAGIC .in{color:#8888ff}
@@ -517,6 +493,9 @@ function toggleMyGear(){
     ids.forEach(id=>document.getElementById(id).classList.add('hide'));
     document.getElementById('myPanel').classList.remove('hide');
     renderMyGear();
+    // Gear already loaded this session? Redraw it instead of making the user
+    // hit "Show my gear" (and the PoE API) again.
+    if(MYGEAR.length) renderMyGearGrid();
   }else{
     document.getElementById('myPanel').classList.add('hide');
     showModeTabs(); renderMode();
@@ -626,19 +605,6 @@ function pickSet(i){curSet=i;curItem=null;renderTabs();renderSlots();renderJewel
   document.getElementById('detail').classList.add('hide');
   document.getElementById('setResults').classList.add('hide');}
 
-function slotCard(s,handler){
-  const ic=ITEMICONS[s.base];
-  return `<div class="slot r-${s.rarity}" onclick="${handler}">
-     <div class="sn">${esc(s.slot)}</div>
-     <div class="slotbody">
-       ${ic?`<img class="slotimg" src="${esc(ic)}" alt="" loading="lazy">`:''}
-       <div class="slottext">
-         <div class="in">${esc(s.name||s.base)}</div>
-         <div class="ib">${esc(s.base)}</div>
-       </div>
-     </div>
-   </div>`;
-}
 // Classic RPG paper-doll: weapons flank, armour down the middle, jewellery
 // beside it, flasks in a row — so gear reads like the in-game window.
 const DOLL=[['Weapon 1','w1','tall'],['Helmet','helm',''],['Amulet','amu','small'],
@@ -871,7 +837,13 @@ async function doSearch(){
     return;
   }
   out.innerHTML='<div class="spin" style="margin-top:12px">Creating trade search…</div>';
-  const d=await api('/api/search',payload);
+  let d;
+  try{ d=await api('/api/search',payload,90000); }
+  catch(e){
+    out.innerHTML='<div class="err" style="margin-top:14px">Search timed out or '+
+      'failed — PoE trade may be busy. Try again.</div>';
+    return;
+  }
   let h='<div style="margin-top:14px">';
   if(d.url){
     h+=`<div class="ok">✓ Search ready.</div>`;

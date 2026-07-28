@@ -48,25 +48,47 @@ def _maxroll_code(link: str) -> str:
     """
     low = link.lower()
     m = re.search(r"/(?:poe/pob|profiles(?:/load)?/poe)/([a-z0-9]+)", low)
-    pid = m.group(1) if m else None
+    ids = [m.group(1)] if m else []
 
-    if pid is None:
-        # A build-guide (or other) page: find the linked pob short id.
+    if not ids:
+        # A build-guide page. Older guides carry an "Open in Path of Building"
+        # link; newer ones only reference the planner via data-poe-profile.
         html = _http_get(link)
-        found = re.search(r"/poe/pob/([a-z0-9]+)", html)
-        if not found:
-            raise ValueError("No 'Open in Path of Building' link found on that "
-                             "maxroll page.")
-        pid = found.group(1)
+        ids = re.findall(r"/poe/pob/([a-z0-9]+)", html)
+        ids += re.findall(r'data-poe-profile="([a-z0-9]+)"', html)
+        if not ids:
+            raise ValueError("No Path of Building build found on that maxroll "
+                             "page.")
 
-    profile = json.loads(_http_get(MAXROLL_LOAD.format(id=pid)))
-    data = profile.get("data")
-    if isinstance(data, str):
-        data = json.loads(data)
-    code = (data or {}).get("pobCode")
-    if not code:
-        raise ValueError("maxroll profile had no pobCode.")
-    return code
+    def load(pid):
+        profile = json.loads(_http_get(MAXROLL_LOAD.format(id=pid)))
+        data = profile.get("data")
+        return json.loads(data) if isinstance(data, str) else (data or {})
+
+    seen = set()
+    for pid in ids:
+        if pid in seen:
+            continue
+        seen.add(pid)
+        try:
+            data = load(pid)
+        except Exception:
+            continue
+        if data.get("pobCode"):
+            return data["pobCode"]
+        # Newer planner profiles hold the PoB in a linked profile instead.
+        for pl in (data.get("pobLinks") or []):
+            sub = pl.get("link") if isinstance(pl, dict) else pl
+            if not sub or sub in seen:
+                continue
+            seen.add(sub)
+            try:
+                code = load(sub).get("pobCode")
+            except Exception:
+                continue
+            if code:
+                return code
+    raise ValueError("maxroll profile had no pobCode.")
 
 
 def _mobalytics_code(link: str) -> str:

@@ -100,43 +100,61 @@ def resolve_type(item):
     return base or None
 
 
+def _weapon_category(b):
+    """Weapon sub-category from the base's LAST word, so bases that merely
+    contain another class's word (Dagger Axe, Jewelled Foil) aren't
+    mis-classified. Unknown -> generic 'weapon' (Any Weapon), which is safe."""
+    last = b.split()[-1] if b.split() else ""
+    return {"wand": "weapon.wand", "sceptre": "weapon.sceptre",
+            "claw": "weapon.claw", "dagger": "weapon.dagger",
+            "bow": "weapon.bow", "staff": "weapon.staff"}.get(last, "weapon")
+
+
+# Gear slot (lowercased, checked as a prefix) -> trade Item Category.
+_SLOT_CATEGORY = (
+    ("body armour", "armour.chest"), ("helmet", "armour.helmet"),
+    ("gloves", "armour.gloves"), ("boots", "armour.boots"),
+    ("amulet", "accessory.amulet"), ("ring", "accessory.ring"),
+    ("belt", "accessory.belt"),
+)
+
+
 def category_for(slot, base):
     """Trade "Item Category" filter id for a slot/base (e.g. Body Armour ->
-    armour.chest). Chosen so it never conflicts with the exact base type."""
+    armour.chest), chosen so it never contradicts the exact base type.
+
+    Slot-driven first: the slot says what KIND of item this is, so a sword
+    called "Jewelled Foil" stays a weapon and an amulet called "Wereclaw
+    Talisman" stays an amulet. The base is only consulted to pick a
+    sub-category once the slot has established the class.
+    """
     s, b = (slot or "").lower(), (base or "").lower()
-    if "jewel" in b or "jewel" in s or "socket" in s:
+
+    # Jewel sockets on gear (e.g. "Belt Abyssal Socket 1") are jewels, not belts.
+    if "jewel" in s or "socket" in s or b.endswith("jewel"):
         if "cluster jewel" in b:
             return "jewel.cluster"
         if "eye jewel" in b or "abyss" in b or "abyss" in s:
             return "jewel.abyss"
         return "jewel"
-    if "flask" in s or "flask" in b:
+    if s.startswith("flask") or b.endswith("flask"):
         return "flask"
-    if "shield" in b or "buckler" in b:
-        return "armour.shield"
-    if "quiver" in b:
-        return "armour.quiver"
-    for kw, cat in (("wand", "weapon.wand"), ("sceptre", "weapon.sceptre"),
-                    ("claw", "weapon.claw"), ("dagger", "weapon.dagger"),
-                    ("bow", "weapon.bow")):
-        if kw in b:
+    if "weapon" in s or "offhand" in s:
+        # Off-hands live in a weapon slot but aren't weapons.
+        if b.endswith("shield") or b.endswith("buckler"):
+            return "armour.shield"
+        if b.endswith("quiver"):
+            return "armour.quiver"
+        return _weapon_category(b)
+    for prefix, cat in _SLOT_CATEGORY:
+        if s.startswith(prefix):
             return cat
-    if "weapon" in s:            # axe/mace/sword/staff/etc. -> Any Weapon (safe)
-        return "weapon"
-    if "body armour" in s or "chest" in s:
-        return "armour.chest"
-    if "helmet" in s or "helm" in s:
-        return "armour.helmet"
-    if "glove" in s:
-        return "armour.gloves"
-    if "boot" in s:
-        return "armour.boots"
-    if "amulet" in s:
-        return "accessory.amulet"
-    if "ring" in s:
-        return "accessory.ring"
-    if "belt" in s:
-        return "accessory.belt"
+    # No usable slot (e.g. an item fetched without one): fall back to the base
+    # only where it is unambiguous.
+    if b.endswith("shield") or b.endswith("buckler"):
+        return "armour.shield"
+    if b.endswith("quiver"):
+        return "armour.quiver"
     return None
 
 
@@ -184,7 +202,10 @@ def build_query(item, specs, use_type=True, use_name=False, opts=None):
     opts = opts or {}
     fdict = {"trade_filters": {"filters": {"sale_type": {"option": "priced"}}}}
     # Item Category filter (Body Armour, Helmet, Ring, ...) so it's not "Any".
-    cat = category_for(item.get("slot"), item.get("base"))
+    # Gems are searched by gem name, so a gear category would contradict it
+    # (e.g. the gem "Shield Charge" is not category armour.shield).
+    cat = (None if item.get("rarity") == "GEM"
+           else category_for(item.get("slot"), item.get("base")))
     if cat:
         fdict.setdefault("type_filters", {}).setdefault("filters", {})[
             "category"] = {"option": cat}
@@ -360,7 +381,10 @@ def _gem_art_map():
             json.dump(art, f)
     except Exception:
         pass
-    _gem_art = art
+    # Only memoise a real result: caching {} after a transient network error
+    # would kill every icon for the rest of the session.
+    if art:
+        _gem_art = art
     return art
 
 
@@ -483,8 +507,11 @@ def fetch_results(query, league, poesessid="", limit=8):
         item = it.get("item") or {}
         price = (it.get("listing") or {}).get("price") or {}
         mods = []
-        for m in ((item.get("implicitMods") or []) + (item.get("explicitMods")
-                  or []) + (item.get("craftedMods") or [])):
+        for m in ((item.get("implicitMods") or [])
+                  + (item.get("explicitMods") or [])
+                  + (item.get("craftedMods") or [])
+                  + (item.get("fracturedMods") or [])
+                  + (item.get("enchantMods") or [])):
             txt = m.get("description") if isinstance(m, dict) else m
             if txt:
                 mods.append(txt)

@@ -8,6 +8,7 @@ Zero dependencies (stdlib only).
 import json
 import logging
 import os
+import re
 import threading
 import time
 import traceback
@@ -108,10 +109,22 @@ def _read_builds():
     return builds
 
 
+def _clean_field(s):
+    """Tabs/newlines are the record separators, so never let them into a
+    field -- otherwise one name splits into bogus entries that multiply on
+    every reload."""
+    return re.sub(r"[\t\r\n]+", " ", str(s or "")).strip()
+
+
 def _write_builds(builds):
     with open(BUILDS_FILE, "w", encoding="utf-8") as f:
         for b in builds:
-            f.write(f"{b['name']}\t{b['url']}\n")
+            f.write(f"{_clean_field(b['name'])}\t{_clean_field(b['url'])}\n")
+
+
+# The server is threaded, so read-modify-write of the builds file needs a lock
+# or simultaneous saves silently drop entries.
+_builds_lock = threading.Lock()
 
 
 def _save_build(url, name=None):
@@ -119,23 +132,25 @@ def _save_build(url, name=None):
     url = (url or "").strip()
     if not url:
         return _read_builds()
-    builds = _read_builds()
-    for b in builds:
-        if b["url"] == url:
-            if name:
-                b["name"] = name.strip() or b["name"]
-            _write_builds(builds)
-            return builds
-    builds.append({"name": (name or "").strip() or _default_build_name(url),
-                   "url": url})
-    _write_builds(builds)
-    return builds
+    with _builds_lock:
+        builds = _read_builds()
+        for b in builds:
+            if b["url"] == url:
+                if name:
+                    b["name"] = name.strip() or b["name"]
+                _write_builds(builds)
+                return builds
+        builds.append({"name": (name or "").strip() or _default_build_name(url),
+                       "url": url})
+        _write_builds(builds)
+        return builds
 
 
 def _delete_build(url):
-    builds = [b for b in _read_builds() if b["url"] != (url or "").strip()]
-    _write_builds(builds)
-    return builds
+    with _builds_lock:
+        builds = [b for b in _read_builds() if b["url"] != (url or "").strip()]
+        _write_builds(builds)
+        return builds
 
 
 # ---- Auto-shutdown when the browser tab closes ------------------------------
@@ -212,29 +227,43 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, "not found", "text/plain")
 
     def do_POST(self):
-        length = int(self.headers.get("Content-Length", 0))
-        raw = self.rfile.read(length).decode("utf-8") if length else "{}"
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except (TypeError, ValueError):
+            return self._json(400, {"error": "bad request"})
+        raw = self.rfile.read(length).decode("utf-8", "replace") if length else "{}"
         try:
             payload = json.loads(raw)
         except Exception:
             return self._json(400, {"error": "bad json"})
+        if not isinstance(payload, dict):
+            return self._json(400, {"error": "expected a JSON object"})
+        try:
+            return self._route_post(payload)
+        except Exception:
+            # Never drop the connection: the UI would spin forever with no clue.
+            log.error("POST %s failed\n%s", self.path, traceback.format_exc())
+            return self._json(500, {"error": "Something went wrong on the "
+                                    "server. See logs/errors.log."})
 
-        if self.path == "/api/load":
+    def _route_post(self, payload):
+        path = self.path.split("?", 1)[0]   # ignore any query string
+        if path == "/api/load":
             self._handle_load(payload)
-        elif self.path == "/api/search":
+        elif path == "/api/search":
             self._handle_search(payload)
-        elif self.path == "/api/searchset":
+        elif path == "/api/searchset":
             self._handle_searchset(payload)
-        elif self.path == "/api/searchitems":
+        elif path == "/api/searchitems":
             self._handle_searchitems(payload)
-        elif self.path == "/api/itemicons":
+        elif path == "/api/itemicons":
             try:
                 icons = trade.get_item_icons(payload.get("bases") or [])
             except Exception:
                 log.error("item icons failed\n%s", traceback.format_exc())
                 icons = {}
             self._json(200, {"icons": icons})
-        elif self.path == "/api/gemicons":
+        elif path == "/api/gemicons":
             league = (payload.get("league")
                       or _load_config()["league"]).strip()
             try:
@@ -244,15 +273,15 @@ class Handler(BaseHTTPRequestHandler):
                 log.error("gem icons failed\n%s", traceback.format_exc())
                 icons = {}
             self._json(200, {"icons": icons})
-        elif self.path == "/api/mygear":
+        elif path == "/api/mygear":
             self._handle_mygear(payload)
-        elif self.path == "/api/builds/save":
+        elif path == "/api/builds/save":
             self._json(200, {"builds": _save_build(payload.get("url"),
                                                    payload.get("name"))})
-        elif self.path == "/api/builds/rename":
+        elif path == "/api/builds/rename":
             self._json(200, {"builds": _save_build(payload.get("url"),
                                                    payload.get("name"))})
-        elif self.path == "/api/builds/delete":
+        elif path == "/api/builds/delete":
             self._json(200, {"builds": _delete_build(payload.get("url"))})
         else:
             self._json(404, {"error": "not found"})
@@ -279,6 +308,10 @@ class Handler(BaseHTTPRequestHandler):
         for iset in build["item_sets"]:
             for slot in iset["slots"]:
                 slot["mods"] = _enrich(idx, slot["mods"])
+        # Tree jewels go through the same detail/search UI, so they need the
+        # same enrichment -- otherwise every jewel search drops its stats.
+        for jewel in build.get("jewels") or []:
+            jewel["mods"] = _enrich(idx, jewel["mods"])
         log.info("LOAD done in %.2fs total", time.time() - t0)
         self._json(200, build)
 
