@@ -927,6 +927,12 @@ window.doSearchSet=guard(async function(){
   if(!items.length){ el.innerHTML='<div class="panel muted">Nothing to search.</div>'; return; }
   BUDGET=(document.getElementById('setPrice')||{}).value||'';
   CURRENCY=(document.getElementById('setCur')||{}).value||'divine';
+  // Without a number that tick box would quietly do nothing at all.
+  if(SETHIDE && !BUDGET){
+    el.innerHTML='<div class="panel err">To use <b>only show what I can afford</b>, '+
+      'first type a number in <b>Most to spend on one item</b>. Then press the button again.</div>';
+    return;
+  }
   // Placeholder rows up front, filled in as each answer arrives. Staring at a
   // blank panel for 20 seconds looked like the button had done nothing.
   SETROWS=items.map(it=>({slot:it.slot, name:(it.item.name||it.item.base),
