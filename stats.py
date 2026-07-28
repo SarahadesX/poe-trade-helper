@@ -67,15 +67,39 @@ def _fetch_json(url):
         return json.loads(r.read().decode("utf-8"))
 
 
+def write_json_atomic(path, data):
+    """Write a cache file in one step.
+
+    This file is ~2 MB. Writing it in place means a crash, a closed laptop or
+    two threads writing at once leaves half a file behind -- which then fails
+    to parse on every later run, and the only cure is deleting it by hand.
+    Write to a temp file and rename: readers see either the old file or the
+    new one, never a partial one.
+    """
+    tmp = "%s.%d.tmp" % (path, os.getpid())
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _load_stats():
     """Return the raw stats result list, cached for 7 days."""
     p = _cache_path("stats.json")
     if os.path.exists(p) and time.time() - os.path.getmtime(p) < 7 * 86400:
-        with open(p, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (ValueError, OSError):
+            pass          # damaged by an older non-atomic write: re-download
     data = _fetch_json(STATS_URL)
-    with open(p, "w", encoding="utf-8") as f:
-        json.dump(data, f)
+    write_json_atomic(p, data)
     return data
 
 

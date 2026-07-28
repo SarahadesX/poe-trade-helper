@@ -645,20 +645,33 @@ function renderSaved(){
 function openSaved(i){
   document.getElementById('link').value=SAVED[i].url; load();
 }
-async function saveBuild(url,name){
-  try{ const d=await api('/api/builds/save',{url,name}); SAVED=d.builds||SAVED; renderSaved(); }
-  catch(e){}
+// Saved-build changes must reach the server in the order they were made.
+// Opening a build auto-saves it, so deleting one straight afterwards used to
+// race that save -- the delete landed first and the build came back.
+let SAVEQ=Promise.resolve();
+function queueSaved(fn){ SAVEQ=SAVEQ.then(fn,fn); return SAVEQ; }
+
+function saveBuild(url,name){
+  return queueSaved(async()=>{
+    try{ const d=await api('/api/builds/save',{url,name});
+         SAVED=d.builds||SAVED; renderSaved(); }catch(e){}
+  });
 }
-async function renameSaved(i){
+function renameSaved(i){
   const cur=SAVED[i]; const name=prompt('Rename build:', cur.name);
   if(name===null) return;
-  try{ const d=await api('/api/builds/rename',{url:cur.url,name:name.trim()||cur.name});
-       SAVED=d.builds||SAVED; renderSaved(); }catch(e){}
+  return queueSaved(async()=>{
+    try{ const d=await api('/api/builds/rename',{url:cur.url,name:name.trim()||cur.name});
+         SAVED=d.builds||SAVED; renderSaved(); }catch(e){}
+  });
 }
-async function deleteSaved(i){
+function deleteSaved(i){
   const cur=SAVED[i];
   if(!confirm('Remove "'+cur.name+'" from saved builds?')) return;
-  try{ const d=await api('/api/builds/delete',{url:cur.url}); SAVED=d.builds||[]; renderSaved(); }catch(e){}
+  return queueSaved(async()=>{
+    try{ const d=await api('/api/builds/delete',{url:cur.url});
+         SAVED=d.builds||[]; renderSaved(); }catch(e){}
+  });
 }
 
 function renderTabs(){

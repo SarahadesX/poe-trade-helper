@@ -10,6 +10,8 @@ import urllib.request
 import urllib.error
 import urllib.parse
 
+import stats
+
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PoE-Trade-Helper/1.0"
 LEAGUES_URL = "https://www.pathofexile.com/api/trade/data/leagues"
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
@@ -106,8 +108,7 @@ def get_leagues():
             data = json.loads(r.read().decode("utf-8"))
         leagues = [x["id"] for x in data.get("result", [])
                    if x.get("realm", "pc") == "pc"]
-        with open(p, "w", encoding="utf-8") as f:
-            json.dump(leagues, f)
+        stats.write_json_atomic(p, leagues)
         return leagues
     except Exception:
         return ["Standard", "Hardcore"]
@@ -454,8 +455,7 @@ def _gem_art_map():
             if name.endswith(" Support"):     # PoB stores the short name
                 art.setdefault(name[:-8], url)
         os.makedirs(CACHE_DIR, exist_ok=True)
-        with open(_GEM_ART_FILE, "w", encoding="utf-8") as f:
-            json.dump(art, f)
+        stats.write_json_atomic(_GEM_ART_FILE, art)
     except Exception:
         pass
     # Only memoise a real result: caching {} after a transient network error
@@ -542,8 +542,7 @@ def get_gem_icons(names, league=None, supports=None):
     if guessed:
         try:
             os.makedirs(CACHE_DIR, exist_ok=True)
-            with open(_GEM_ICON_FILE, "w", encoding="utf-8") as f:
-                json.dump(extra, f)
+            stats.write_json_atomic(_GEM_ICON_FILE, extra)
         except Exception:
             pass
     return out
