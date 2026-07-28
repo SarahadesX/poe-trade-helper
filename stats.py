@@ -31,6 +31,31 @@ def collapse_ranges(text: str) -> str:
     return _RANGE_RE.sub(lambda m: m.group(1), text)
 
 
+# ---- Local vs global stats --------------------------------------------------
+# The trade dictionary stores some stats TWICE: once as a global bonus (what a
+# jewel or passive grants) and once suffixed "(Local)" -- the value printed on
+# the item itself. A body armour's "+88 to Armour" is the local one; asking for
+# the global id searches for a chest that ALSO grants +88 armour to everything,
+# which essentially nothing has, so the search silently returns nothing.
+# Which spelling is right depends on the kind of item the mod sits on.
+CTX_ARMOUR = "armour"   # helmet / body / gloves / boots / shield
+CTX_WEAPON = "weapon"   # anything you attack with
+
+# Matched against the NORMALISED text (numbers already replaced by '#').
+_LOCAL_BY_CTX = {
+    CTX_ARMOUR: re.compile(
+        r"^#%? (?:to|increased) [\w, ]*"
+        r"\b(?:armour|evasion|energy shield|ward)\b"),
+    CTX_WEAPON: re.compile(
+        r"^(?:adds # to # \w+ damage"
+        r"|#% increased (?:attack speed|critical strike chance"
+        r"|accuracy rating|physical damage)"
+        r"|# to accuracy rating"
+        r"|#% chance to poison on hit"
+        r"|#% of physical attack damage leeched as (?:life|mana))$"),
+}
+
+
 def _cache_path(name):
     os.makedirs(CACHE_DIR, exist_ok=True)
     return os.path.join(CACHE_DIR, name)
@@ -68,6 +93,7 @@ class StatIndex:
 
     def __init__(self):
         self._map = {}
+        self._local = {}   # same key, but the "(Local)" spelling of the stat
         raw = _load_stats()
         for group in raw.get("result", []):
             gtype = group.get("id", "")  # e.g. "explicit"
@@ -79,22 +105,49 @@ class StatIndex:
                 etype = sid.split(".", 1)[0]  # id prefix is authoritative
                 key = normalise(text)
                 rank = _TYPE_RANK.get(etype, 5)
+                if text.endswith(" (Local)"):
+                    key = normalise(text[:-len(" (Local)")])
+                    cur = self._local.get(key)
+                    if cur is None or rank < cur["rank"]:
+                        self._local[key] = {"id": sid, "text": text,
+                                            "type": etype, "rank": rank}
+                    continue
                 cur = self._map.get(key)
                 if cur is None or rank < cur["rank"]:
                     self._map[key] = {"id": sid, "text": text,
                                       "type": etype, "rank": rank}
 
-    def match(self, mod_line: str):
-        """Return {id, text, value, matched_text} or None."""
+    def _lookup(self, key, context):
+        """Local spelling first when the item kind calls for it, else global.
+
+        Some stats ("#% increased Armour and Energy Shield") exist ONLY in the
+        local spelling, so always fall back to it -- otherwise they'd stop
+        matching entirely whenever the item kind is unknown.
+        """
+        if context:
+            pat = _LOCAL_BY_CTX.get(context)
+            if pat and pat.match(key):
+                hit = self._local.get(key)
+                if hit:
+                    return hit
+        return self._map.get(key) or self._local.get(key)
+
+    def match(self, mod_line: str, context: str = None):
+        """Return {id, text, value, matched_text} or None.
+
+        context (CTX_ARMOUR / CTX_WEAPON) says what kind of item the line is
+        printed on, so defence and weapon-damage lines resolve to the item's
+        own "(Local)" stat rather than the global bonus of the same name.
+        """
         line = collapse_ranges(mod_line)
         key = normalise(line)
-        hit = self._map.get(key)
+        hit = self._lookup(key, context)
         if not hit:
             # Retry without a trailing "(implicit)"/"(crafted)" style note.
             stripped = re.sub(r"\s*\([^)]*\)\s*$", "", line)
             if stripped != line:
                 key = normalise(stripped)
-                hit = self._map.get(key)
+                hit = self._lookup(key, context)
         if not hit:
             return None
         nums = _NUM_RE.findall(line)

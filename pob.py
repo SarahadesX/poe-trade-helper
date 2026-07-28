@@ -20,17 +20,34 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 MAXROLL_LOAD = "https://planners.maxroll.gg/profiles/load/poe/{id}"
 
 # Metadata line keys inside an <Item> block that are NOT mods.
-_META_KEYS = (
+# Anything matched by PREFIX must be unambiguous (it ends in ':' or a space),
+# because a bare word like "Corrupted" or "Split" also STARTS real mods --
+# "Corrupted Blood cannot be inflicted on you", "Splits towards +2 targets".
+# Those flag lines stand alone, so they go in _META_EXACT instead.
+_META_PREFIXES = (
     "Rarity:", "Unique ID:", "Item Level:", "LevelReq:", "Quality:",
     "Sockets:", "Radius:", "Limited to:", "Prefix:", "Suffix:",
     "Requires ", "Talisman Tier:", "Armour:", "Evasion Rating:",
     "Energy Shield:", "Ward:", "Physical Damage:", "Elemental Damage:",
     "Critical Strike Chance:", "Attacks per Second:", "Weapon Range:",
-    "Chance to Block:", "Stack Size:", "Item Class:", "Corrupted",
-    "Mirrored", "Split", "Crafted:", "Selected Variant:", "Has Alt Variant",
-    "Cluster Jewel", "Catalyst", "Anointed", "Implicits:",
-    "League:", "Requires Class", "Source:", "Upgrade:", "Note:",
+    "Chance to Block:", "Stack Size:", "Item Class:",
+    "Crafted:", "Selected Variant:", "Selected Alt Variant",
+    "Has Alt Variant", "Cluster Jewel ", "Catalyst:", "CatalystQuality:",
+    "Anointed:", "Implicits:", "League:", "Source:", "Upgrade:", "Note:",
 )
+# PoB also stores per-item numbers under single CamelCase keys that keep being
+# added ("Evasion: 488", "ArmourBasePercentile: 1", "EnergyShieldBasePercentile").
+# Game mod text never begins with a bare one-word key + colon, so match the
+# shape instead of chasing each new name.
+_META_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*:(\s|$)")
+
+# Standalone flag lines: matched on the WHOLE line only.
+_META_EXACT = frozenset((
+    "Corrupted", "Mirrored", "Split", "Fractured", "Synthesised",
+    "Unidentified", "Shaper Item", "Elder Item", "Crusader Item",
+    "Redeemer Item", "Hunter Item", "Warlord Item", "Searing Exarch Item",
+    "Eater of Worlds Item",
+))
 
 
 def _http_get(url: str) -> str:
@@ -180,7 +197,9 @@ def _parse_item_block(text: str):
 
     mods = []
     for ln in lines[idx:]:
-        if any(ln.startswith(k) for k in _META_KEYS):
+        if ln.strip() in _META_EXACT:
+            continue
+        if _META_KEY_RE.match(ln) or any(ln.startswith(k) for k in _META_PREFIXES):
             continue
         vm = re.match(r"\{variant:([\d,]+)\}", ln)
         if vm and selected and not (set(vm.group(1).split(",")) & selected):

@@ -4,6 +4,7 @@ import copy
 import json
 import os
 import re
+import threading
 import time
 import urllib.request
 import urllib.error
@@ -12,6 +13,71 @@ import urllib.parse
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PoE-Trade-Helper/1.0"
 LEAGUES_URL = "https://www.pathofexile.com/api/trade/data/leagues"
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
+
+
+# ---- Rate limiting ----------------------------------------------------------
+# GGG says exactly how long we are shut out for. Ignoring that and retrying
+# blind (as this used to) just extends the ban, so remember the deadline and
+# either ride out a short one or report the real wait instead of guessing.
+_rl_lock = threading.Lock()
+_rl_until = 0.0
+RIDE_OUT = 10.0        # a cool-off this short is worth just waiting through
+
+
+def rate_limited_for():
+    """Seconds still left on a rate limit the trade API gave us (0 = clear)."""
+    with _rl_lock:
+        return max(0.0, _rl_until - time.time())
+
+
+def _note_rate_limit(seconds):
+    global _rl_until
+    with _rl_lock:
+        _rl_until = max(_rl_until, time.time() + seconds)
+
+
+def _retry_after(headers):
+    """How long GGG says to wait. Retry-After is authoritative; otherwise the
+    X-Rate-Limit-*-State headers carry it as each rule's 3rd field
+    (hits:period:restricted_for)."""
+    try:
+        ra = headers.get("Retry-After")
+    except AttributeError:
+        ra = None
+    if ra:
+        try:
+            return max(0.0, float(ra))
+        except (TypeError, ValueError):
+            pass
+    worst = 0.0
+    try:
+        pairs = list(headers.items())
+    except AttributeError:
+        pairs = []
+    for k, v in pairs:
+        k = (k or "").lower()
+        if not (k.startswith("x-rate-limit-") and k.endswith("-state")):
+            continue
+        for rule in str(v).split(","):
+            parts = rule.split(":")
+            if len(parts) >= 3:
+                try:
+                    worst = max(worst, float(parts[2]))
+                except ValueError:
+                    pass
+    return worst
+
+
+def rate_limit_message(seconds):
+    """Plain-English wait, for someone who has no idea what a 429 is."""
+    s = int(round(seconds))
+    if s >= 90:
+        m = int(round(s / 60.0))
+        when = "about %d minute%s" % (m, "" if m == 1 else "s")
+    else:
+        when = "about %d seconds" % max(s, 1)
+    return ("Path of Exile limits how often searches can be made, and we have "
+            "hit that limit. Please wait " + when + ", then try again.")
 
 
 def _load_config():
@@ -247,6 +313,12 @@ def _post_search(query, league, poesessid=""):
     if poesessid:
         headers["Cookie"] = f"POESESSID={poesessid}"
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    wait = rate_limited_for()
+    if wait > 0:
+        if wait <= RIDE_OUT:
+            time.sleep(wait)      # short cool-off: cheaper to wait than fail
+        else:
+            return None, rate_limit_message(wait)
     try:
         with urllib.request.urlopen(req, timeout=25) as r:
             return json.loads(r.read().decode("utf-8")), None
@@ -256,9 +328,14 @@ def _post_search(query, league, poesessid=""):
             detail = e.read().decode("utf-8", "replace")[:200]
         except Exception:
             pass
-        if e.code in (403, 429):
-            return None, (f"Blocked by Cloudflare/rate-limit (HTTP {e.code}). "
-                          f"Add your POESESSID to config.json. {detail}")
+        if e.code == 429:
+            secs = _retry_after(e.headers) or 60.0
+            _note_rate_limit(secs)
+            return None, rate_limit_message(secs)
+        if e.code == 403:
+            return None, ("Path of Exile refused the request (403). This is "
+                          "usually its bot check — try again in a minute, or "
+                          "add your POESESSID to config.json. " + detail)
         return None, f"HTTP {e.code}: {detail}"
     except Exception as e:
         return None, f"Request failed: {e}"

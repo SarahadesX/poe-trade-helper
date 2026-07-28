@@ -54,11 +54,26 @@ def _load_config():
     return cfg
 
 
-def _enrich(idx, lines):
+def _stat_context(item):
+    """Which "(Local)" stat spelling applies to mods printed on this item.
+
+    Armour on a chest is the chest's own armour; on a jewel the same words
+    mean a global bonus. Trade has a separate id for each, so the item's
+    category decides which one a line resolves to. See stats._LOCAL_BY_CTX.
+    """
+    cat = trade.category_for(item.get("slot", ""), item.get("base", "")) or ""
+    if cat.startswith("weapon"):
+        return stats.CTX_WEAPON
+    if cat.startswith("armour.") and not cat.endswith("quiver"):
+        return stats.CTX_ARMOUR
+    return None
+
+
+def _enrich(idx, lines, context=None):
     """Annotate each mod line with its matched trade stat id + value."""
     out = []
     for line in lines:
-        m = idx.match(line)
+        m = idx.match(line, context)
         out.append({"line": line, "matched": bool(m),
                     "value": (m["value"] if m else None),
                     "id": (m["id"] if m else None)})
@@ -312,11 +327,11 @@ class Handler(BaseHTTPRequestHandler):
                                     "See logs/errors.log (check your connection)."})
         for iset in build["item_sets"]:
             for slot in iset["slots"]:
-                slot["mods"] = _enrich(idx, slot["mods"])
+                slot["mods"] = _enrich(idx, slot["mods"], _stat_context(slot))
         # Tree jewels go through the same detail/search UI, so they need the
         # same enrichment -- otherwise every jewel search drops its stats.
         for jewel in build.get("jewels") or []:
-            jewel["mods"] = _enrich(idx, jewel["mods"])
+            jewel["mods"] = _enrich(idx, jewel["mods"], _stat_context(jewel))
         log.info("LOAD done in %.2fs total", time.time() - t0)
         self._json(200, build)
 
@@ -330,7 +345,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"slots": [], "error": err})
         idx = stats.get_index()
         for s in slots:
-            s["mods"] = _enrich(idx, s["mods"])
+            s["mods"] = _enrich(idx, s["mods"], _stat_context(s))
         log.info("MYGEAR %s/%s -> %d slots", acct, character, len(slots))
         self._json(200, {"slots": slots, "error": None})
 
@@ -344,13 +359,14 @@ class Handler(BaseHTTPRequestHandler):
                  item.get("base"), item.get("rarity"), len(chosen), league)
 
         idx = stats.get_index()
+        ctx = _stat_context(item)
         specs, skipped, disp = [], [], []
         for entry in chosen:
             if isinstance(entry, dict):
                 line, minv = entry.get("line", ""), entry.get("min")
             else:
                 line, minv = entry, None
-            m = idx.match(line)
+            m = idx.match(line, ctx)
             if not m:
                 skipped.append(line)
                 continue
@@ -384,11 +400,12 @@ class Handler(BaseHTTPRequestHandler):
         league = (payload.get("league") or _load_config()["league"]).strip()
         use_name = bool(payload.get("use_name"))
         idx = stats.get_index()
+        ctx = _stat_context(item)
         specs = []
         for entry in (payload.get("mods") or []):
             line = entry.get("line", "") if isinstance(entry, dict) else entry
             minv = entry.get("min") if isinstance(entry, dict) else None
-            m = idx.match(line)
+            m = idx.match(line, ctx)
             if m:
                 specs.append({"id": m["id"], "min": minv})
         query = trade.build_query(item, specs, use_type=True, use_name=use_name)
@@ -397,7 +414,7 @@ class Handler(BaseHTTPRequestHandler):
         for it in res.get("items", []):
             enriched = []
             for line in it["mods"]:
-                m = idx.match(line)
+                m = idx.match(line, ctx)
                 enriched.append({"text": line, "id": (m["id"] if m else None),
                                  "value": (m["value"] if m else None)})
             it["mods"] = enriched
@@ -437,19 +454,17 @@ class Handler(BaseHTTPRequestHandler):
         results, totals, total_chaos, unconvertible = [], {}, 0.0, False
         for n, it in enumerate(items):
             itm = it.get("item") or {}
+            ctx = _stat_context(itm)
             specs = []
             for entry in (it.get("mods") or []):
                 line = entry.get("line", "") if isinstance(entry, dict) else entry
                 minv = entry.get("min") if isinstance(entry, dict) else None
-                m = idx.match(line)
+                m = idx.match(line, ctx)
                 if m:
                     specs.append({"id": m["id"], "min": minv})
             query = trade.build_query(itm, specs, use_type=True,
                                       use_name=bool(it.get("use_name")))
             res = trade.search_and_price(query, league, sess)
-            if res["error"] and ("429" in res["error"] or "Cloudflare" in res["error"]):
-                time.sleep(3.0)  # rate-limited: back off and retry once
-                res = trade.search_and_price(query, league, sess)
             price, over = res.get("price"), False
             if price:
                 totals[price["currency"]] = round(
@@ -466,6 +481,21 @@ class Handler(BaseHTTPRequestHandler):
                             "url": res["url"], "error": res["error"],
                             "price": price, "over": over,
                             "count": res.get("count", 0)})
+            # A long ban means every remaining request would be refused (and
+            # each attempt extends it). Stop, and say so on the rows we never
+            # got to, instead of repeating the same error 15 more times.
+            left = trade.rate_limited_for()
+            if left > trade.RIDE_OUT:
+                log.info("SEARCHSET stopped early: rate limited for %.0fs", left)
+                for rest in items[n + 1:]:
+                    ri = rest.get("item") or {}
+                    results.append({
+                        "slot": rest.get("slot", ""),
+                        "name": ri.get("name") or ri.get("base", ""),
+                        "url": None, "price": None, "over": False, "count": 0,
+                        "error": "Not checked yet — "
+                                 + trade.rate_limit_message(left)})
+                break
             if n < len(items) - 1:
                 time.sleep(0.6)  # throttle
         ok = sum(1 for r in results if r["url"])

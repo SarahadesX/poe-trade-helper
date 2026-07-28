@@ -260,6 +260,9 @@
   .hide{display:none}
   .spin{color:var(--muted)}
   details summary{cursor:pointer;color:var(--muted);margin-top:10px}
+  /* A search is running: show it, and make a second click obviously a no-op. */
+  body.busy{cursor:progress}
+  body.busy button.primary,body.busy .gembuy{opacity:.55;cursor:progress}
 </style>
 </head>
 <body>
@@ -494,7 +497,7 @@ function renderTrees(){
 }
 
 // ---- Gem buy link ----------------------------------------------------------
-async function buyGem(name, support){
+window.buyGem=guard(async function(name, support){
   let type=name;
   if(support && !/ Support$/i.test(name)) type=name+' Support';
   try{
@@ -503,7 +506,7 @@ async function buyGem(name, support){
     if(d && d.url) window.open(d.url,'_blank');
     else alert('Could not open gem search: '+((d&&d.error)||''));
   }catch(e){ alert('Could not open gem search.'); }
-}
+});
 
 // ---- How-to banner ---------------------------------------------------------
 function dismissHowto(){ try{localStorage.setItem('poe_howto_done','1');}catch(e){}
@@ -546,14 +549,15 @@ function renderMyGear(){
         <li><b>Your account name</b> shows at the top-right after you log in at
           <a href="https://www.pathofexile.com/login" target="_blank">pathofexile.com</a>,
           and on the <a href="https://www.pathofexile.com/my-account" target="_blank">My Account</a> page.
-          (Type just the name, without any <code>#numbers</code>.)</li>
+          Type the <b>whole</b> thing including the number, like
+          <code>Exile#1234</code> — PoE will not find you without it.)</li>
         <li><b>Your character name</b> is the character you play — the name you
           pick when you log into the game.</li>
       </ol>
     </div>
     <div class="row" style="gap:12px;flex-wrap:wrap;margin-top:4px">
       <label class="setopt">Account name
-        <input id="mgAcc" class="optin" style="width:180px" value="${esc(acc)}" placeholder="e.g. YourName"></label>
+        <input id="mgAcc" class="optin" style="width:180px" value="${esc(acc)}" placeholder="e.g. Exile#1234"></label>
       <label class="setopt">Character name
         <input id="mgChar" class="optin" style="width:180px" value="${esc(chr)}" placeholder="e.g. MyWitch"></label>
       <button class="primary" onclick="loadMyGear()">Show my gear</button>
@@ -567,7 +571,7 @@ function renderMyGear(){
     <div id="myGearGrid" style="margin-top:16px"></div>
   </div>`;
 }
-async function loadMyGear(){
+window.loadMyGear=guard(async function(){
   const account=(document.getElementById('mgAcc')||{}).value.trim();
   const character=(document.getElementById('mgChar')||{}).value.trim();
   const grid=document.getElementById('myGearGrid');
@@ -581,7 +585,7 @@ async function loadMyGear(){
   renderMyGearGrid();
   loadItemIcons();
   document.getElementById('detail').classList.add('hide');
-}
+});
 function renderMyGearGrid(){
   const grid=document.getElementById('myGearGrid');
   if(!grid || !MYGEAR.length) return;
@@ -778,7 +782,20 @@ function gatherSetItems(){
   if(SETJEWELS) for(const j of (BUILD.jewels||[])) items.push(itemToSearch(j));
   return items;
 }
-async function doSearchSet(){
+// Every trade call goes through here. PoE limits how often we may search, and
+// a second click while one is running doubles the requests for no benefit --
+// which is how you earn a 15-minute ban. One at a time, always.
+let BUSY=false;
+function guard(fn){
+  return async function(){
+    if(BUSY) return;
+    BUSY=true;
+    document.body.classList.add('busy');
+    try{ return await fn.apply(this, arguments); }
+    finally{ BUSY=false; document.body.classList.remove('busy'); }
+  };
+}
+window.doSearchSet=guard(async function(){
   const items=gatherSetItems();
   const el=document.getElementById('setResults'); el.classList.remove('hide');
   if(!items.length){ el.innerHTML='<div class="panel muted">Nothing to search.</div>'; return; }
@@ -795,7 +812,7 @@ async function doSearchSet(){
   catch(e){ clearInterval(tick); el.innerHTML='<div class="panel err">Timed out — try again.</div>'; return; }
   clearInterval(tick);
   renderSetResults((d&&d.results)||[], d||{});
-}
+});
 function fmtPrice(p){
   if(!p) return '<span class="muted">no price</span>';
   const c=p.currency.charAt(0).toUpperCase()+p.currency.slice(1);
@@ -910,7 +927,7 @@ function buyHelp(){
     '<div class="muted">Everything here only shows fixed-price items, so the price you see is the price you pay.</div>'+
     '</details>';
 }
-async function doSearch(){
+window.doSearch=guard(async function(){
   const s=curItem;
   const mods=gatherDetailMods();
   const useName = !!(document.getElementById('useName')||{}).checked;
@@ -950,7 +967,7 @@ async function doSearch(){
   }
   h+='</div>';
   out.innerHTML=h;
-}
+});
 function niceStat(t){ return String(t||'').replace(/^[+-]?\(?\d[\d.,\-–]*\)?%?\s*/,'').replace(/^to /,'').trim(); }
 function statNum(v){ return (v%1===0)?v:Math.round(v*10)/10; }
 function statAgg(mods){  // sum values per stat id

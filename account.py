@@ -36,12 +36,40 @@ def _strip(s):
     return re.sub(r"<<[^>]*>>", "", s or "").strip()  # localisation markup
 
 
+def _mod_text(m):
+    """A mod entry from GGG's API as plain text.
+
+    Most are plain strings, but some items return objects instead
+    (e.g. {"description": "..."} on logbook/sanctum-style mods). Feeding one
+    of those to a regex raised TypeError and 500'd the whole request, so this
+    endpoint had never returned gear even once.
+    """
+    if isinstance(m, str):
+        return _strip(m)
+    if isinstance(m, dict):
+        for k in ("description", "text", "name", "mod"):
+            v = m.get(k)
+            if isinstance(v, str):
+                return _strip(v)
+        return ""
+    if isinstance(m, (list, tuple)):
+        return _strip(" ".join(x for x in m if isinstance(x, str)))
+    return ""
+
+
 def get_gear(account, character, poesessid=None):
     """Read a character's equipped items. Works with NO login if the PoE
     profile is public; a POESESSID (config.json) is only needed for private
     profiles. Returns (slots, error)."""
     if not account or not character:
         return [], "Type your account name and character name first."
+    # GGG needs the FULL account name including the #number ("Exile#1234").
+    # Without it the API answers 403, which reads like a privacy problem and
+    # sends people off changing settings that were never wrong.
+    if "#" not in account:
+        return [], ("Your account name needs its number too — type it as "
+                    "Name#1234 (the number is shown right next to your name "
+                    "on your PoE profile page).")
     url = ("https://www.pathofexile.com/character-window/get-items?accountName="
            + urllib.parse.quote(account) + "&character="
            + urllib.parse.quote(character) + "&realm=pc")
@@ -49,10 +77,11 @@ def get_gear(account, character, poesessid=None):
         data = _get(url, poesessid)
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
-            return [], ("Couldn't read that profile. Either the account/"
-                        "character name is wrong, or your PoE profile is set to "
-                        "private. Set it to Public (see the steps), or add your "
-                        "POESESSID for private profiles.")
+            return [], ("Couldn't read that profile. Check the account name is "
+                        "exactly as PoE shows it (Name#1234), and that your "
+                        "characters are set to Public on pathofexile.com → My "
+                        "Account → Privacy Settings. (Keeping it private works "
+                        "too, but then you need the POESESSID step below.)")
         if e.code == 400:
             return [], ("Check the character name — it must match exactly "
                         "(capital letters count).")
@@ -73,6 +102,6 @@ def get_gear(account, character, poesessid=None):
             "name": _strip(it.get("name", "")),
             "base": _strip(it.get("typeLine") or it.get("baseType", "")),
             "rarity": _FRAME_RARITY.get(it.get("frameType", 0), "NORMAL"),
-            "mods": [_strip(m) for m in mods],
+            "mods": [t for t in (_mod_text(m) for m in mods) if t],
         })
     return slots, None
